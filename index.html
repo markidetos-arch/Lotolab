@@ -89,6 +89,10 @@ a{color:#dcb2ff}
 .cand{border-radius:14px;padding:10px;margin:6px -10px;border:1px solid transparent;cursor:pointer;border-top:1px solid transparent}
 .cand:not(.sel){opacity:.55}
 .cand.sel{border-color:rgba(177,76,255,.5);background:rgba(177,76,255,.08)}
+.folder summary{list-style:none}
+.folder.win{border-color:rgba(61,220,151,.45);background:linear-gradient(180deg,rgba(61,220,151,.08),var(--card) 60%)}
+.fic{font-size:26px}
+nav button{font-size:10.5px}
 .lnk{background:none;border:0;color:#ff9ab5;font:600 12px system-ui;padding:0}
 </style>
 </head>
@@ -333,12 +337,13 @@ async function backtest(K, k) {
 const UI = { tab: 'jogar', sel: new Set(), ultimo: null, numJ: 'todos', bt: null };
 const ICONS = {
   jogar: '<path d="M12 3l2.6 5.6 6.1.6-4.6 4.1 1.3 6-5.4-3.1-5.4 3.1 1.3-6L3.3 9.2l6.1-.6z"/>',
+  salvos: '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
   resultado: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12l3 3 5-6"/>',
   ranking: '<path d="M5 20V11M12 20V5M19 20v-6"/>',
   numeros: '<circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="7" r="2.5"/><circle cx="7" cy="17" r="2.5"/><circle cx="17" cy="17" r="2.5"/>',
   ajustes: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>'
 };
-const TABS = [['jogar', 'Jogar'], ['resultado', 'Resultado'], ['ranking', 'Ranking'], ['numeros', 'Números'], ['ajustes', 'Ajustes']];
+const TABS = [['jogar', 'Jogar'], ['salvos', 'Salvos'], ['resultado', 'Resultado'], ['ranking', 'Ranking'], ['numeros', 'Números'], ['ajustes', 'Ajustes']];
 function nav() { $('#nav').innerHTML = TABS.map(([id, n]) => `<button class="${UI.tab === id ? 'on' : ''}" onclick="go('${id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[id]}</svg>${n}</button>`).join(''); }
 function go(t) { UI.tab = t; render(); scrollTo(0, 0); }
 const balls = (m, hit = 0) => `<div class="balls">${toNums(m).map(n => `<span class="b ${hit ? (hit & (1 << (n - 1)) ? 'hit' : '') : 'on'}">${pad(n)}</span>`).join('')}</div>`;
@@ -371,11 +376,25 @@ function vJogar() {
     <div class="stat"><b>${brl(p.ganho)}</b><span>ganho</span></div>
     <div class="stat"><b class="${p.saldo >= 0 ? 'pos' : 'neg'}">${brl(p.saldo)}</b><span>saldo</span></div></div>
     <p class="mu" style="margin:10px 0 0">${p.n} concurso(s) apostado(s) · premiado em ${p.prem}</p></div>`;
-  const done = S.rounds.filter(x => x.res && x.mine.length).slice(-30).reverse();
-  if (done.length) h += `<div class="card"><h2>Histórico</h2>${done.map(r => `<details class="hist"><summary class="row sp"><span><b>#${r.c}</b> <span class="mu">${r.mine.length} jogo(s)</span></span><span class="pill ${r.premio ? 'ok' : ''}">${r.premio ? brl(r.premio) : 'máx ' + Math.max(...r.hits)}</span></summary>
-    <div style="margin-top:8px">${r.mine.map((g, i) => `<div class="game"><div class="lbl"><span>Jogo ${i + 1}</span><span>${r.hits[i]} acertos</span></div>${balls(g, r.res)}</div>`).join('')}
-    <div style="margin-top:8px"><button class="btn sec sm" onclick="compartilhar(${r.id})">Compartilhar imagem</button></div></div></details>`).join('')}</div>`;
   return h;
+}
+function vSalvos() {
+  const all = S.rounds.filter(r => r.cands && r.cands.length).sort((a, b) => b.c - a.c);
+  const premiadas = all.filter(r => r.res && r.premio), list = UI.pasta === 'prem' ? premiadas : all, tot = premiadas.reduce((a, r) => a + r.premio, 0);
+  if (!all.length) return `<div class="card"><h2>Pastas</h2><p class="mu">Ainda não tem jogos. Gere e salve na aba Jogar que cada concurso vira uma pasta aqui.</p></div>`;
+  let h = `<div class="card"><div class="stats"><div class="stat"><b>${all.length}</b><span>pastas</span></div><div class="stat"><b class="${premiadas.length ? 'pos' : ''}">${premiadas.length}</b><span>premiadas</span></div><div class="stat"><b class="${tot ? 'pos' : ''}">${brl(tot)}</b><span>em prêmios</span></div></div></div>
+    <div class="seg"><button class="${UI.pasta !== 'prem' ? 'on' : ''}" onclick="UI.pasta='todas';render()">Todas</button><button class="${UI.pasta === 'prem' ? 'on' : ''}" onclick="UI.pasta='prem';render()">🏆 Premiadas</button></div>`;
+  if (!list.length) return h + `<div class="card"><p class="mu" style="margin:0">Nenhuma pasta premiada ainda.</p></div>`;
+  return h + list.map(r => {
+    const sv = salvos(r), outros = r.cands.filter(x => !x.sv).map(x => x.m);
+    const st = !r.res ? `<span class="pill">aguardando</span>` : r.premio ? `<span class="pill ok">🏆 ${brl(r.premio)}</span>` : sv.length ? `<span class="pill">máx ${Math.max(...r.hits)}</span>` : `<span class="pill">conferido</span>`;
+    const jogo = (g, lbl) => `<div class="game"><div class="lbl"><span>${lbl}</span>${r.res ? `<span class="${prize(pop(g & r.res)) ? 'pos' : ''}"><b>${pop(g & r.res)}</b> acertos${prize(pop(g & r.res)) ? ' · ' + brl(prize(pop(g & r.res))) : ''}</span>` : ''}</div>${balls(g, r.res || 0)}</div>`;
+    return `<details class="card folder ${r.premio ? 'win' : ''}"><summary class="row sp"><span class="row" style="gap:12px"><span class="fic">${r.premio ? '🏆' : '📁'}</span><span><b>Concurso ${r.c}</b><br><span class="mu">${sv.length} salvo(s)${outros.length ? ' · ' + outros.length + ' rascunho(s)' : ''} · ${new Date(r.ts).toLocaleDateString('pt-BR')}</span></span></span>${st}</summary>
+      <div style="margin-top:10px">${r.res ? `<h3 style="margin-top:0">Sorteadas</h3>${balls(r.res)}` : ''}
+      <h3>Jogos salvos</h3>${sv.length ? sv.map((g, i) => jogo(g, 'Jogo ' + (i + 1))).join('') : '<p class="mu">Nenhum jogo salvo neste concurso.</p>'}
+      ${outros.length ? `<details style="margin-top:6px"><summary class="mu">▸ Rascunhos não salvos (${outros.length})${r.res ? ' · como teriam ido' : ''}</summary>${outros.map((g, i) => jogo(g, 'Rascunho ' + (i + 1))).join('')}</details>` : ''}
+      ${sv.length ? `<div class="grid2" style="margin-top:12px"><button class="btn sec sm" onclick="copiar(gameTxt(S.rounds.find(x=>x.id===${r.id})))">Copiar texto</button><button class="btn sm" onclick="compartilhar(${r.id})">Compartilhar</button></div>` : ''}</div></details>`;
+  }).join('');
 }
 async function compartilhar(id) {
   const r = S.rounds.find(x => x.id === id), gs = r.mine; if (!gs.length) return toast('Salve algum jogo primeiro');
@@ -496,7 +515,7 @@ function zerar(o) {
 function render() {
   nav();
   $('#hdr').innerHTML = S.draws.length ? `último #${S.draws.at(-1).c}` : '';
-  $('#app').innerHTML = ({ jogar: vJogar, resultado: vResultado, ranking: vRanking, numeros: vNumeros, ajustes: vAjustes })[UI.tab]();
+  $('#app').innerHTML = ({ jogar: vJogar, salvos: vSalvos, resultado: vResultado, ranking: vRanking, numeros: vNumeros, ajustes: vAjustes })[UI.tab]();
 }
 render();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
