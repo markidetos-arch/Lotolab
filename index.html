@@ -142,7 +142,7 @@ function limpa(o) {
   if (!obj(o)) return out;
   const IDS = ['aleat', 'padrao', 'quentes', 'recentes', 'atrasados'], sid = v => IDS.includes(v) ? v : 'padrao';
   const mask = v => { const m = I(v, -1); return m > 0 && m < (1 << 25) && pop(m) === 15 ? m : null; };
-  const sc = x => obj(x) ? { j: Math.max(0, I(x.j)), h: [0, 1, 2, 3, 4].map(i => Math.max(0, I(arr(x.h)[i]))) } : null;
+  const sc = x => obj(x) ? { j: Math.max(0, I(x.j)), h: [0, 1, 2, 3, 4].map(i => Math.max(0, I(arr(x.h)[i]))), s: Math.max(0, I(x.s)), js: Math.max(0, I(x.js)) } : null;
   const scs = x => { const r = {}; if (obj(x)) for (const k of IDS) { const v = sc(x[k]); if (v) r[k] = v; } return r; };
   if (obj(o.cfg)) for (const k in out.cfg) if (k in o.cfg) out.cfg[k] = Math.max(0, N(o.cfg[k], out.cfg[k]));
   out.cfg.jogos = Math.min(200, Math.max(1, Math.trunc(out.cfg.jogos))); out.cfg.janela = Math.min(500, Math.max(5, Math.trunc(out.cfg.janela)));
@@ -232,15 +232,18 @@ function gerar(h, sid, k, excl = []) {
 }
 
 /* ================= placar das estratégias ================= */
-const emptySc = () => ({ j: 0, h: [0, 0, 0, 0, 0] });
-function acc(sc, hits) { sc.j++; if (hits >= 11) sc.h[hits - 11]++; }
+// j = jogos; h = quantos fizeram 11..15; s = soma de todos os acertos; js = jogos com soma registrada
+const emptySc = () => ({ j: 0, h: [0, 0, 0, 0, 0], s: 0, js: 0 });
+function acc(sc, hits) { sc.j++; sc.s = (sc.s || 0) + hits; sc.js = (sc.js || 0) + 1; if (hits >= 11) sc.h[hits - 11]++; }
+const media = sc => sc.js ? sc.s / sc.js : 0;
 const retOf = sc => sc.h.reduce((a, c, i) => a + c * prize(11 + i), 0);
 const fixOf = sc => sc.h.slice(0, 3).reduce((a, c, i) => a + c * prize(11 + i), 0);
 function ranking(sc = S.score) {
   const rows = STRATS.map(s => ({ s, sc: sc[s.id] || emptySc() }));
   // o líder é decidido pelos prêmios fixos (11–13): 14 e 15 são raros demais e distorceriam tudo
-  const tj = rows.reduce((a, r) => a + r.sc.j, 0), base = tj ? rows.reduce((a, r) => a + fixOf(r.sc), 0) / tj : 0, P0 = 300;
-  rows.forEach(r => { r.adj = (fixOf(r.sc) + P0 * base) / (r.sc.j + P0); r.ret = retOf(r.sc); r.hit = r.sc.j ? r.sc.h.reduce((a, b) => a + b, 0) / r.sc.j : 0; });
+  // líder = maior MÉDIA DE ACERTOS por jogo (todos os jogos contam, inclusive 14 e 15), com freio de 300 jogos na média geral
+  const tj = rows.reduce((a, r) => a + (r.sc.js || 0), 0), base = tj ? rows.reduce((a, r) => a + (r.sc.s || 0), 0) / tj : 9, P0 = 300;
+  rows.forEach(r => { r.adj = ((r.sc.s || 0) + P0 * base) / ((r.sc.js || 0) + P0); r.med = media(r.sc); r.ret = retOf(r.sc); r.hit = r.sc.j ? r.sc.h.reduce((a, b) => a + b, 0) / r.sc.j : 0; });
   return rows.sort((a, b) => b.adj - a.adj);
 }
 function lider() { const r = ranking(); const tot = r.reduce((a, x) => a + x.sc.j, 0); return tot ? r[0].s.id : 'padrao'; }
@@ -511,11 +514,11 @@ function vAjuda() {
   return `<div class="card"><h2>Como o app funciona</h2><p class="mu" style="margin:0">Toque em cada tópico para abrir. Para voltar, use as abas lá embaixo.</p></div>` +
   sec('🔁 O dia a dia', `<ol class="steps"><li><b>Jogar:</b> escolha quantos jogos quer e toque em Gerar.</li><li>Marque os jogos e toque em <b>Salvar para apostar</b>, ou guarde como <b>rascunho</b>.</li><li>Copie ou compartilhe a imagem e faça a aposta.</li><li>Depois do sorteio, o app busca o resultado sozinho e confere tudo. Se não conseguir, digite na aba <b>Resultado</b>.</li></ol>`, true) +
   sec('🧠 As 5 estratégias', STRATS.map(s => `<p><b>${s.nome}</b><br>${s.desc}</p>`).join('') + `<p>Os <b>filtros de padrão</b> descartam jogos fora do que acontece em 80% dos sorteios: quantidade de pares, soma das dezenas, números da moldura, primos e repetidos do concurso anterior.</p>`) +
-  sec('🏆 Ranking ao vivo: como ele escolhe seus jogos', `<p><b>Quando você toca em Gerar</b>, o app calcula uma nota para cada estratégia:</p><ul><li>quanto ela ganhou em prêmios fixos (11 a 13 pontos) por jogo;</li><li>mais um <b>freio</b>: soma 300 jogos imaginários com a média de todas as estratégias. Quem tem poucos jogos fica perto da média, e só passa na frente quem mantém a vantagem por bastante tempo.</li></ul>
+  sec('🏆 Ranking ao vivo: como ele escolhe seus jogos', `<p><b>Quando você toca em Gerar</b>, o app calcula uma nota para cada estratégia:</p><ul><li>a <b>média de acertos por jogo</b>: todo jogo conta, dos de 8 ou 9 pontos até os de 14 e 15;</li><li>mais um <b>freio</b>: soma 300 jogos imaginários com a média de todas as estratégias. Quem tem poucos jogos fica perto da média, e só passa na frente quem mantém a vantagem por bastante tempo.</li></ul>
     <p>A estratégia com a <b>maior nota é a líder</b>, e todos os seus jogos daquele momento saem dela.</p>
     <p><b>Na primeira vez que você gera para um concurso</b>, cada estratégia também gera seus jogos "sombra", que você não vê. Quando chega o resultado, o app confere os jogos sombra de todas e soma no ranking. Por isso ele anda mesmo para as estratégias que você não usou.</p>
     <p>No concurso seguinte, se outra estratégia passou na frente, ela vira a líder. O ajuste é na <b>escolha da estratégia</b>, não nos números dentro de cada uma.</p>
-    <p>14 e 15 pontos não entram na escolha do líder: são raros demais e um acerto por sorte distorceria tudo.</p>`) +
+    <p>Por que média de acertos e não dinheiro? Porque um único 15 por sorte vale R$ 1,5 milhão e deixaria uma estratégia líder para sempre. A média usa todos os jogos e trata o 14 e o 15 como o que são: os jogos que chegaram mais perto. O prêmio é consequência: quem acerta mais em média faz 11+ com mais frequência.</p><p>A média esperada de qualquer jogo é <b>9,0 acertos</b>. Uma estratégia só é interessante se ficar acima disso de forma consistente.</p>`) +
   sec('⏪ Teste com sorteios passados', `<p>Funciona como uma <b>máquina do tempo</b>:</p><ol class="steps"><li>O app separa os últimos N concursos e começa como se estivesse no dia anterior ao primeiro, enxergando só o histórico até ali.</li><li>Cada estratégia gera seus jogos, como faria hoje.</li><li>Ele confere com o resultado real daquele concurso e anota acertos e prêmios.</li><li>Só então o sorteio entra no histórico, e o app avança para o próximo concurso.</li></ol>
     <p>Nenhuma estratégia "cola": a de atrasados, por exemplo, só sabe o que estava atrasado naquele momento.</p><p>"Usar como ponto de partida" transforma esse resultado no ranking inicial.</p>`) +
   sec('📁 Pastas, rascunhos e simulação', `<ul><li>Cada vez que você gera e salva, vira uma <b>pasta</b> com concurso, data e hora.</li><li><b>Salvos para apostar</b> contam no gasto e no placar. <b>Rascunhos</b> não contam, mas são conferidos: a pasta mostra 💡 "você poderia ter ganho R$ X".</li><li>🏆 na capa = seus jogos salvos ganharam.</li><li><b>Simular no passado:</b> dentro da pasta, confere aqueles jogos contra os sorteios anteriores ao concurso (últimos 100, 300, 1000 ou todos) e mostra um ranking de quanto cada um teria ganhado.</li></ul>`) +
@@ -626,23 +629,26 @@ function tog(n) { if (UI.sel.has(n)) UI.sel.delete(n); else if (UI.sel.size < 15
 function colar(t) { const ns = [...new Set((t.match(/\d+/g) || []).map(Number).filter(n => n >= 1 && n <= 25))]; if (ns.length !== 15) return toast(`Achei ${ns.length} dezenas, preciso de 15`); UI.sel = new Set(ns); render(); }
 
 function rankList(sc, unit) {
-  const r = ranking(sc), mx = Math.max(...r.map(x => x.sc.j ? x.ret / (x.sc.j * S.cfg.preco) : 0), .01);
-  return r.map((x, i) => { const roi = x.sc.j ? x.ret / (x.sc.j * S.cfg.preco) : 0; return `<div class="rk"><div><b>${i + 1}. ${x.s.nome}</b> ${i === 0 && unit && x.sc.j ? '<span class="pill ac">líder</span>' : ''}${x.s.ctl ? ' <span class="pill">controle</span>' : ''}<div class="mu">${x.sc.j} jogos · 11+ em ${pct(x.hit)} · ${x.sc.h.map((c, k) => c ? `${11 + k}pts:${c}` : '').filter(Boolean).join(' ')}</div></div>
-    <div style="text-align:right"><b>${pct(roi)}</b><div class="mu">volta por R$1</div></div><div class="bar"><i class="${x.s.ctl ? 'ctl' : ''}" style="width:${Math.min(100, roi / mx * 100)}%"></i></div></div>`; }).join('');
+  const r = ranking(sc), meds = r.filter(x => x.sc.js).map(x => x.med), lo = Math.min(8.9, ...meds), hi = Math.max(9.1, ...meds);
+  if (!meds.length && r.some(x => x.sc.j)) return '<p class="mu">Este ranking é da versão antiga (sem média de acertos). Rode o teste com sorteios passados e toque em "Usar como ponto de partida".</p>';
+  return r.map((x, i) => { const roi = x.sc.j ? x.ret / (x.sc.j * S.cfg.preco) : 0, d = x.med - 9; return `<div class="rk"><div><b>${i + 1}. ${x.s.nome}</b> ${i === 0 && unit && x.sc.j ? '<span class="pill ac">líder</span>' : ''}${x.s.ctl ? ' <span class="pill">controle</span>' : ''}<div class="mu">${x.sc.j} jogos · 11+ em ${pct(x.hit)} · ${x.sc.h.map((c, k) => c ? `${11 + k}pts:${c}` : '').filter(Boolean).join(' ')}</div></div>
+    <div style="text-align:right"><b>${x.med.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b><div class="mu">acertos/jogo</div></div>
+    <div class="mu" style="grid-column:1/-1;font-size:12px">${x.sc.js ? `${d >= 0 ? '+' : ''}${d.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} vs. esperado (9,0)` : 'sem média'} · volta ${pct(roi)} por R$1</div>
+    <div class="bar"><i class="${x.s.ctl ? 'ctl' : ''}" style="width:${x.sc.js ? Math.max(3, (x.med - lo) / (hi - lo) * 100) : 0}%"></i></div></div>`; }).join('');
 }
 function vRanking() {
   const tot = STRATS.reduce((a, s) => a + (S.score[s.id]?.j || 0), 0);
   let h = `<div class="card"><h2>Ranking ao vivo</h2><p class="mu" style="margin-top:0">A cada resultado, o app confere os jogos de <b>todas</b> as estratégias (mesmo as que você não apostou). Quem lidera gera seus próximos jogos.</p>
     ${tot ? rankList(S.score, true) : '<p class="mu">Ainda sem dados. Confira um resultado ou rode o teste abaixo e use-o como ponto de partida.</p>'}
-    <div class="note">“Volta por R$1”: quanto voltou em prêmios para cada real apostado. 100% = empate. O líder é decidido pelos prêmios fixos (11–13 pontos); 14 e 15 usam valores estimados (Ajustes).</div></div>`;
+    <div class="note">“Volta por R$1”: quanto voltou em prêmios para cada real apostado. 100% = empate. O líder é quem tem a maior <b>média de acertos por jogo</b>. Todo jogo conta, de 0 a 15 pontos. A média esperada de qualquer jogo é 9,0.</div></div>`;
   h += `<div class="card"><h2>Teste com sorteios passados</h2><p class="mu" style="margin-top:0">Simula cada estratégia nos últimos concursos usando só o que se sabia antes de cada sorteio.</p>
     <div class="grid2"><div><label class="f">Concursos</label><select id="btK">${[100, 300, 500, 1000, 2000].map(v => `<option ${v === 300 ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
     <div><label class="f">Jogos por concurso</label><select id="btk">${[1, 2, 3, 5, 10].map(v => `<option ${v === S.cfg.jogos ? 'selected' : ''}>${v}</option>`).join('')}</select></div></div>
     ${UI.bt ? `<div class="prog"><i id="btp" style="width:${pct(UI.bt.p)}"></i></div><p class="mu">Simulando…</p>` : `<div style="margin-top:12px"><button class="btn" ${S.draws.length < 60 ? 'disabled' : ''} onclick="backtest(+$('#btK').value,+$('#btk').value)">Rodar teste</button></div>`}`;
   if (S.bt) {
-    const ctl = S.bt.sc.aleat, base = ctl && ctl.j ? retOf(ctl) / (ctl.j * S.cfg.preco) : 0;
+    const ctl = S.bt.sc.aleat, base = ctl ? media(ctl) : 0;
     h += `<h3>Concursos ${S.bt.de} a ${S.bt.ate} · ${S.bt.k} jogo(s) cada</h3>${rankList(S.bt.sc, false)}
-      <div class="note">Compare tudo com o <b>Aleatório puro</b> (${pct(base)}). Diferenças pequenas são sorte. Rode de novo e o ranking costuma mudar.</div>
+      <div class="note">Compare tudo com o <b>Aleatório puro</b> (${base.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} acertos/jogo). Diferenças pequenas são sorte. Rode de novo e o ranking costuma mudar.</div>
       <div style="margin-top:12px"><button class="btn sec" onclick="usarBT()">Usar como ponto de partida do ranking</button></div>`;
   }
   return h + `</div><div class="card"><h2>As estratégias</h2>${STRATS.map(s => `<p style="margin:8px 0"><b>${s.nome}</b><br><span class="mu">${s.desc}</span></p>`).join('')}</div>`;
