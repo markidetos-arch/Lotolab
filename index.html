@@ -2,6 +2,8 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://servicebus2.caixa.gov.br https://loteriascaixa-api.herokuapp.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#120c1c">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -131,12 +133,40 @@ function toast(t) { const e = $('#toast'); e.textContent = t; e.classList.add('s
 /* ================= estado ================= */
 const KEY = 'lotolab-v1';
 const DEF = () => ({ draws: [], rounds: [], score: {}, bt: null, cfg: { jogos: 2, preco: 3.5, p11: 7, p12: 14, p13: 35, p14: 1500, p15: 1500000, janela: 20 } });
+const okData = v => typeof v === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(v) ? v : null;
+const esc = v => String(v ?? '').replace(/[&<>"'`]/g, ch => '&#' + ch.charCodeAt(0) + ';');
+// Valida tudo que vem do armazenamento ou de um backup: só números, ids conhecidos e datas no formato dd/mm/aaaa
+function limpa(o) {
+  const N = (v, d = 0) => (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '')) && Number.isFinite(+v) ? +v : d;
+  const I = (v, d = 0) => Math.trunc(N(v, d)), out = DEF(), obj = x => x && typeof x === 'object' && !Array.isArray(x), arr = x => Array.isArray(x) ? x : [];
+  if (!obj(o)) return out;
+  const IDS = ['aleat', 'padrao', 'quentes', 'recentes', 'atrasados'], sid = v => IDS.includes(v) ? v : 'padrao';
+  const mask = v => { const m = I(v, -1); return m > 0 && m < (1 << 25) && pop(m) === 15 ? m : null; };
+  const sc = x => obj(x) ? { j: Math.max(0, I(x.j)), h: [0, 1, 2, 3, 4].map(i => Math.max(0, I(arr(x.h)[i]))) } : null;
+  const scs = x => { const r = {}; if (obj(x)) for (const k of IDS) { const v = sc(x[k]); if (v) r[k] = v; } return r; };
+  if (obj(o.cfg)) for (const k in out.cfg) if (k in o.cfg) out.cfg[k] = Math.max(0, N(o.cfg[k], out.cfg[k]));
+  out.cfg.jogos = Math.min(200, Math.max(1, Math.trunc(out.cfg.jogos))); out.cfg.janela = Math.min(500, Math.max(5, Math.trunc(out.cfg.janela)));
+  out.draws = arr(o.draws).filter(obj).map(d => ({ c: I(d.c), n: arr(d.n).map(x => I(x)).filter(x => x >= 1 && x <= 25), d: okData(d.d) }))
+    .filter(d => d.c > 0 && d.n.length === 15 && new Set(d.n).size === 15).map(d => (d.n.sort((a, b) => a - b), d));
+  out.rounds = arr(o.rounds).filter(obj).map(r => {
+    const st = sid(r.strat), shadow = {}; if (obj(r.shadow)) for (const k of IDS) if (Array.isArray(r.shadow[k])) shadow[k] = r.shadow[k].map(mask).filter(Boolean);
+    const x = { id: I(r.id), c: I(r.c), ts: N(r.ts, Date.now()), strat: st, shadow, mine: arr(r.mine).map(mask).filter(Boolean), preco: Math.max(0, N(r.preco, out.cfg.preco)), res: r.res == null ? null : mask(r.res) };
+    if (Array.isArray(r.lotes)) x.lotes = r.lotes.filter(obj).map(l => ({ id: I(l.id), ts: N(l.ts, Date.now()), strat: sid(l.strat), jogos: arr(l.jogos).filter(obj).map(j => ({ m: mask(j.m), st: ['novo', 'salvo', 'rasc'].includes(j.st) ? j.st : 'rasc', sel: !!j.sel })).filter(j => j.m) })).filter(l => l.id > 0);
+    else { x.cands = arr(r.cands).filter(obj).map(c => ({ m: mask(c.m), s: st, sv: !!c.sv })).filter(c => c.m); x.apostou = r.apostou !== false; if (!x.cands.length) delete x.cands; }
+    return x;
+  }).filter(r => r.id > 0 && r.c > 0);
+  out.score = scs(o.score);
+  if (obj(o.bt) && obj(o.bt.sc)) out.bt = { K: I(o.bt.K), k: I(o.bt.k), ts: N(o.bt.ts), de: I(o.bt.de), ate: I(o.bt.ate), sc: scs(o.bt.sc) };
+  if (obj(o.prox)) out.prox = { c: I(o.prox.c), d: okData(o.prox.d) };
+  if (obj(o.sync)) out.sync = { ts: N(o.sync.ts), ok: !!o.sync.ok, src: ['Caixa', 'Comunidade'].includes(o.sync.src) ? o.sync.src : '?', c: I(o.sync.c) };
+  return out;
+}
 let S;
-try { S = JSON.parse(localStorage.getItem(KEY)) || DEF(); } catch (e) { S = DEF(); }
-S.cfg = Object.assign(DEF().cfg, S.cfg);
+try { S = limpa(JSON.parse(localStorage.getItem(KEY))); } catch (e) { S = DEF(); }
 function migra() {
   for (const r of S.rounds) {
     if (!r.cands && !r.lotes) { const ok = r.apostou !== false; r.cands = (r.mine || []).map(m => ({ m, s: r.strat, sv: ok })); }
+    delete r.apostou;
     if (!r.lotes) { r.lotes = [{ id: r.id, ts: r.ts, strat: r.strat, jogos: (r.cands || []).map(x => ({ m: x.m, st: x.sv ? 'salvo' : (r.res ? 'rasc' : 'novo'), sel: true })) }]; delete r.cands; }
     r.mine = salvos(r); if (r.res) { r.hits = r.mine.map(g => pop(g & r.res)); r.premio = r.hits.reduce((a, x) => a + (x >= 11 ? (S.cfg['p' + x] || 0) : 0), 0); }
   }
@@ -177,7 +207,7 @@ const STRATS = [
   { id: 'recentes', nome: 'Quentes recentes', desc: 'Favorece os números que mais saíram nos últimos concursos + filtros.', filtro: true, w: h => zw(h.recentCount(S.cfg.janela), .8) },
   { id: 'atrasados', nome: 'Atrasados', desc: 'Favorece os números que estão há mais concursos sem sair + filtros.', filtro: true, w: h => [0, ...Array.from({ length: 25 }, (_, i) => 1 + .7 * h.atraso(i + 1))] }
 ];
-const SN = id => (STRATS.find(s => s.id === id) || {}).nome || id;
+const SN = id => (STRATS.find(s => s.id === id) || {}).nome || esc(id);
 function amostra(w) {
   const k = []; for (let i = 1; i <= 25; i++) k.push([w ? Math.pow(Math.random(), 1 / w[i]) : Math.random(), i]);
   k.sort((a, b) => b[0] - a[0]); return toMask(k.slice(0, 15).map(x => x[1]));
@@ -232,7 +262,10 @@ async function unzip(buf) {
       const f = files[name]; if (!f) return null;
       const st = f.off + 30 + dv.getUint16(f.off + 26, true) + dv.getUint16(f.off + 28, true), data = new Uint8Array(buf, st, f.cs);
       if (f.m === 0) return new TextDecoder().decode(data);
-      return await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+      // limite contra "bomba zip": para de descompactar depois de 80 MB
+      const rd = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader(), parts = []; let tot = 0;
+      for (;;) { const { done, value } = await rd.read(); if (done) break; tot += value.length; if (tot > 80e6) { rd.cancel(); throw new Error('grande demais'); } parts.push(value); }
+      return new TextDecoder().decode(await new Blob(parts).arrayBuffer());
     }
   };
 }
@@ -283,6 +316,7 @@ function mergeDraws(list) {
 }
 async function importFile(f) {
   try {
+    if (f.size > 30e6) return toast('Arquivo grande demais');
     const buf = await f.arrayBuffer(), u = new Uint8Array(buf);
     const txt = (u[0] === 0x50 && u[1] === 0x4b) ? null : new TextDecoder('utf-8').decode(u);
     if (txt && txt.trim().startsWith('{')) return restore(txt);
@@ -305,12 +339,13 @@ async function getJSON(url) {
 }
 function normaliza(j) {
   if (!j) return null;
-  const c = +(j.numero ?? j.concurso), dz = j.listaDezenas ?? j.dezenas ?? j.dezenasSorteadasOrdemSorteio;
-  if (!c || !Array.isArray(dz)) return null;
+  if (typeof j !== 'object') return null;
+  const c = Math.trunc(+(j.numero ?? j.concurso)), dz = j.listaDezenas ?? j.dezenas ?? j.dezenasSorteadasOrdemSorteio;
+  if (!(c > 0) || !Array.isArray(dz) || dz.length !== 15) return null;
   const n = dz.map(Number).filter(x => x >= 1 && x <= 25).sort((a, b) => a - b);
   if (new Set(n).size !== 15) return null;
   const proxC = +(j.numeroConcursoProximo ?? j.proximoConcurso ?? (c + 1)), proxD = j.dataProximoConcurso ?? j.dataProxConcurso ?? null;
-  return { c, d: j.dataApuracao ?? j.data ?? null, n, prox: { c: proxC, d: proxD } };
+  return { c, d: okData(j.dataApuracao ?? j.data), n, prox: { c: Number.isFinite(proxC) ? proxC : c + 1, d: okData(proxD) } };
 }
 async function buscaConcurso(c) {
   let err;
@@ -349,7 +384,7 @@ async function baixarHistorico() {
     const r = mergeDraws(list); toast(`${r.add} concursos adicionados`); render();
   } catch (e) { toast('Não deu para baixar. Use a planilha da Caixa.'); }
 }
-const syncTxt = () => !S.sync ? 'Ainda não buscou.' : S.sync.ok ? `Última busca: ${new Date(S.sync.ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · fonte: ${S.sync.src}` : `Última tentativa falhou (${new Date(S.sync.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}). Sem internet ou a fonte está fora do ar.`;
+const syncTxt = () => !S.sync ? 'Ainda não buscou.' : S.sync.ok ? `Última busca: ${new Date(S.sync.ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · fonte: ${esc(S.sync.src)}` : `Última tentativa falhou (${new Date(S.sync.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}). Sem internet ou a fonte está fora do ar.`;
 
 /* ================= rodadas ================= */
 function rodadaAtual() { const c = (S.draws.at(-1)?.c || 0) + 1; return { c, r: S.rounds.find(x => x.c === c && !x.res) }; }
@@ -440,7 +475,7 @@ function vJogar() {
     <div style="margin-top:14px"><button class="btn" onclick="go('ajustes')">Importar planilha</button></div></div>`;
   const { c, r } = rodadaAtual(), p = placar(), sid = lider(), qtd = UI.qtd || S.cfg.jogos;
   let h = `<div class="card"><div class="row sp"><h2 style="margin:0">Concurso ${c}</h2><span class="pill ac">${SN(sid)}</span></div>
-    ${S.prox && S.prox.c === c && S.prox.d ? `<p style="margin:6px 0 0">📅 Sorteio em <b>${S.prox.d}</b></p>` : ''}
+    ${S.prox && S.prox.c === c && S.prox.d ? `<p style="margin:6px 0 0">📅 Sorteio em <b>${esc(S.prox.d)}</b></p>` : ''}
     <p class="mu" style="margin:6px 0 12px">Estratégia escolhida automaticamente: a que lidera o ranking.</p>
     <label class="f">Quantos jogos gerar</label><div class="row" style="flex-wrap:nowrap"><input type="number" inputmode="numeric" min="1" max="200" value="${qtd}" style="width:90px" oninput="UI.qtd=+this.value;document.getElementById('gbtn').textContent='Gerar '+(+this.value||1)+' jogo(s) · '+brl((+this.value||1)*S.cfg.preco)">
     <button class="btn" id="gbtn" onclick="gerarMais()">Gerar ${qtd} jogo(s) · ${brl(qtd * S.cfg.preco)}</button></div>`;
@@ -646,7 +681,7 @@ function vAjustes() {
 function setC(k, v) { S.cfg[k] = Math.max(k === 'preco' ? 0 : 1, +v || 0); save(); render(); }
 function importText() { const d = rowsToDraws(textRows($('#pasteD').value)); if (!d.length) return toast('Não achei sorteios no texto'); const r = mergeDraws(d); toast(`${r.add} concursos novos`); render(); }
 function baixar() { try { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(S)], { type: 'application/json' })); a.download = 'lotolab-backup-' + new Date().toISOString().slice(0, 10) + '.json'; a.click(); } catch (e) { toast('Use "Copiar backup"'); } }
-function restore(t) { try { const o = JSON.parse(t); if (!Array.isArray(o.draws)) throw 0; S = Object.assign(DEF(), o); S.cfg = Object.assign(DEF().cfg, o.cfg); migra(); _Hn = -1; save(); toast('Backup restaurado'); render(); } catch (e) { toast('Backup inválido'); } }
+function restore(t) { try { if (String(t).length > 20e6) throw 0; const o = JSON.parse(t); if (!o || !Array.isArray(o.draws)) throw 0; S = limpa(o); migra(); _Hn = -1; save(); toast('Backup restaurado'); render(); } catch (e) { toast('Backup inválido'); } }
 let zConf = null;
 function zerar(o) {
   if (zConf !== o) { zConf = o; $('#zmsg').textContent = 'Toque de novo para confirmar.'; return; }
