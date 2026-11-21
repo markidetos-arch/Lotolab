@@ -462,7 +462,15 @@ const ICONS = {
 };
 const TABS = [['jogar', 'Jogar'], ['salvos', 'Salvos'], ['resultado', 'Resultado'], ['ranking', 'Ranking'], ['numeros', 'Números'], ['ajustes', 'Ajustes']];
 function nav() { $('#nav').innerHTML = TABS.map(([id, n]) => `<button class="${UI.tab === id ? 'on' : ''}" onclick="go('${id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[id]}</svg>${n}</button>`).join(''); }
-function go(t) { UI.tab = t; render(); scrollTo(0, 0); }
+// botão voltar do celular: cada aba entra no histórico; voltar leva à aba anterior e, na aba Jogar, fecha o app
+const ABAS = ['jogar', 'salvos', 'resultado', 'ranking', 'numeros', 'ajustes', 'ajuda'];
+function go(t, doVoltar) {
+  if (!doVoltar && t !== UI.tab) {
+    try { const n = history.state?.n || 0; if (t === 'jogar') { if (n) { history.go(-n); return; } } else history.pushState({ n: n + 1 }, '', '#' + t); } catch (e) { /* prévia/iframe sem histórico: só troca a aba */ }
+  }
+  UI.tab = t; render(); scrollTo(0, 0);
+}
+addEventListener('popstate', () => { const t = location.hash.slice(1); go(ABAS.includes(t) ? t : 'jogar', true); });
 const balls = (m, hit = 0) => `<div class="balls">${toNums(m).map(n => `<span class="b ${hit ? (hit & (1 << (n - 1)) ? 'hit' : '') : 'on'}">${pad(n)}</span>`).join('')}</div>`;
 const gameTxt = gs => gs.map((g, i) => `Jogo ${i + 1}: ${toNums(g).map(pad).join(' ')}`).join('\n');
 async function copiar(t) { try { await navigator.clipboard.writeText(t); toast('Copiado'); } catch (e) { toast('Não deu para copiar'); } }
@@ -693,6 +701,7 @@ function render() {
   $('#hdr').innerHTML = S.draws.length ? `último #${S.draws.at(-1).c}` : '';
   $('#app').innerHTML = ({ ajuda: vAjuda, jogar: vJogar, salvos: vSalvos, resultado: vResultado, ranking: vRanking, numeros: vNumeros, ajustes: vAjustes })[UI.tab]();
 }
+try { history.replaceState({ n: 0 }, '', '#jogar'); } catch (e) {}
 render();
 sincronizar(false);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') sincronizar(false); });
