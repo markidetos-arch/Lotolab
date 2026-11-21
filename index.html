@@ -288,6 +288,64 @@ async function importFile(f) {
   } catch (e) { console.error(e); toast('Não consegui ler esse arquivo'); }
 }
 
+/* ================= resultados automáticos (internet) ================= */
+const FONTES = [
+  { nome: 'Caixa', url: c => 'https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil/' + (c || '') },
+  { nome: 'Comunidade', url: c => 'https://loteriascaixa-api.herokuapp.com/api/lotofacil/' + (c || 'latest') }
+];
+async function getJSON(url) {
+  const ac = new AbortController(), t = setTimeout(() => ac.abort(), 12000);
+  try { const r = await fetch(url, { signal: ac.signal, cache: 'no-store', headers: { Accept: 'application/json' } }); if (!r.ok) throw new Error('HTTP ' + r.status); return await r.json(); }
+  finally { clearTimeout(t); }
+}
+function normaliza(j) {
+  if (!j) return null;
+  const c = +(j.numero ?? j.concurso), dz = j.listaDezenas ?? j.dezenas ?? j.dezenasSorteadasOrdemSorteio;
+  if (!c || !Array.isArray(dz)) return null;
+  const n = dz.map(Number).filter(x => x >= 1 && x <= 25).sort((a, b) => a - b);
+  if (new Set(n).size !== 15) return null;
+  const proxC = +(j.numeroConcursoProximo ?? j.proximoConcurso ?? (c + 1)), proxD = j.dataProximoConcurso ?? j.dataProxConcurso ?? null;
+  return { c, d: j.dataApuracao ?? j.data ?? null, n, prox: { c: proxC, d: proxD } };
+}
+async function buscaConcurso(c) {
+  let err;
+  for (const f of FONTES) { try { const r = normaliza(await getJSON(f.url(c))); if (r) return { ...r, src: f.nome }; } catch (e) { err = e; } }
+  throw err || new Error('sem resposta');
+}
+let sincronizando = false;
+async function sincronizar(manual) {
+  if (sincronizando) return; if (!manual && S.sync && Date.now() - S.sync.ts < 10 * 60e3 && S.sync.ok) return;
+  sincronizando = true; if (manual) { toast('Buscando resultado…'); }
+  try {
+    const ult = await buscaConcurso(); const last = S.draws.at(-1)?.c || 0, novos = [];
+    S.prox = ult.prox;
+    if (!last) { S.sync = { ts: Date.now(), ok: true, src: ult.src, c: ult.c }; save(); if (manual) toast('Sem histórico ainda: importe a planilha ou baixe o histórico em Ajustes'); return; }
+    // preenche buracos dos últimos 30 concursos (ex.: dias sem abrir o app)
+    const tem = new Set(S.draws.map(d => d.c));
+    for (let c = Math.max(S.draws[0].c, ult.c - 30); c < ult.c; c++) if (!tem.has(c)) { try { novos.push(await buscaConcurso(c)); } catch (e) {} }
+    novos.push(ult);
+    const antes = S.rounds.filter(r => !r.res).map(r => r.id);
+    const r = mergeDraws(novos.map(x => ({ c: x.c, n: x.n, d: x.d })));
+    S.sync = { ts: Date.now(), ok: true, src: ult.src, c: ult.c }; save();
+    const conf = S.rounds.filter(x => antes.includes(x.id) && x.res), ganho = conf.reduce((a, x) => a + (x.premio || 0), 0);
+    if (r.add) toast(`Concurso ${ult.c} chegou` + (conf.length ? (ganho ? ` · 🏆 você ganhou ${brl(ganho)}!` : ' · suas pastas foram conferidas') : ''));
+    else if (manual) toast(`Tudo em dia: último é o ${ult.c}`);
+  } catch (e) {
+    S.sync = { ts: Date.now(), ok: false, erro: String(e.message || e) }; save();
+    if (manual) toast('Não consegui buscar. Digite o resultado ou importe a planilha.');
+  } finally { sincronizando = false; render(); }
+}
+async function baixarHistorico() {
+  toast('Baixando histórico completo…');
+  try {
+    const arr = await getJSON('https://loteriascaixa-api.herokuapp.com/api/lotofacil');
+    const list = (Array.isArray(arr) ? arr : []).map(normaliza).filter(Boolean).map(x => ({ c: x.c, n: x.n, d: x.d }));
+    if (list.length < 100) throw new Error('poucos dados');
+    const r = mergeDraws(list); toast(`${r.add} concursos adicionados`); render();
+  } catch (e) { toast('Não deu para baixar. Use a planilha da Caixa.'); }
+}
+const syncTxt = () => !S.sync ? 'Ainda não buscou.' : S.sync.ok ? `Última busca: ${new Date(S.sync.ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · fonte: ${S.sync.src}` : `Última tentativa falhou (${new Date(S.sync.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}). Sem internet ou a fonte está fora do ar.`;
+
 /* ================= rodadas ================= */
 function rodadaAtual() { const c = (S.draws.at(-1)?.c || 0) + 1; return { c, r: S.rounds.find(x => x.c === c && !x.res) }; }
 function salvos(r) { return r.lotes.flatMap(l => l.jogos.filter(j => j.st === 'salvo').map(j => j.m)); }
@@ -377,6 +435,7 @@ function vJogar() {
     <div style="margin-top:14px"><button class="btn" onclick="go('ajustes')">Importar planilha</button></div></div>`;
   const { c, r } = rodadaAtual(), p = placar(), sid = lider(), qtd = UI.qtd || S.cfg.jogos;
   let h = `<div class="card"><div class="row sp"><h2 style="margin:0">Concurso ${c}</h2><span class="pill ac">${SN(sid)}</span></div>
+    ${S.prox && S.prox.c === c && S.prox.d ? `<p style="margin:6px 0 0">📅 Sorteio em <b>${S.prox.d}</b></p>` : ''}
     <p class="mu" style="margin:6px 0 12px">Estratégia escolhida automaticamente: a que lidera o ranking.</p>
     <label class="f">Quantos jogos gerar</label><div class="row" style="flex-wrap:nowrap"><input type="number" inputmode="numeric" min="1" max="200" value="${qtd}" style="width:90px" oninput="UI.qtd=+this.value;document.getElementById('gbtn').textContent='Gerar '+(+this.value||1)+' jogo(s) · '+brl((+this.value||1)*S.cfg.preco)">
     <button class="btn" id="gbtn" onclick="gerarMais()">Gerar ${qtd} jogo(s) · ${brl(qtd * S.cfg.preco)}</button></div>`;
@@ -451,7 +510,7 @@ async function compartilhar(id, lid) {
 function vResultado() {
   const pend = S.rounds.filter(r => !r.res).sort((a, b) => a.c - b.c)[0];
   const cDef = UI.cIn || (pend ? pend.c : (S.draws.at(-1)?.c || 0) + 1);
-  let h = '';
+  let h = `<div class="card"><div class="row sp" style="flex-wrap:nowrap"><span class="mu">${syncTxt()}</span><button class="btn sm" onclick="sincronizar(true)">Buscar resultado</button></div></div>`;
   if (UI.ultimo) { const r = S.rounds.find(x => x.id === UI.ultimo); if (r) h += resultadoCard(r); }
   h += `<div class="card"><h2>Digitar resultado</h2>
     <label class="f">Concurso</label><input type="number" inputmode="numeric" value="${cDef}" oninput="UI.cIn=+this.value">
@@ -513,7 +572,9 @@ function vNumeros() {
 
 function vAjustes() {
   const c = S.cfg, last = S.draws.at(-1);
-  return `<div class="card"><h2>Sorteios</h2><p class="mu" style="margin-top:0">${S.draws.length ? `${S.draws.length} concursos carregados · último: <b>#${last.c}</b>` : 'Nenhum sorteio carregado.'}</p>
+  return `<div class="card"><h2>Resultados automáticos</h2><p class="mu" style="margin-top:0">O app busca o último resultado na internet sempre que você abre, confere suas pastas e mostra a data do próximo sorteio.</p>
+    <p class="mu">${syncTxt()}</p><div class="grid2"><button class="btn" onclick="sincronizar(true)">Buscar agora</button><button class="btn sec" onclick="baixarHistorico()">Baixar histórico completo</button></div></div>
+  <div class="card"><h2>Sorteios</h2><p class="mu" style="margin-top:0">${S.draws.length ? `${S.draws.length} concursos carregados · último: <b>#${last.c}</b>` : 'Nenhum sorteio carregado.'}</p>
     <label class="btn" style="display:block;text-align:center">Importar planilha (.xlsx, .csv, .htm)<input type="file" accept=".xlsx,.xls,.csv,.txt,.htm,.html,.json" hidden onchange="this.files[0]&&importFile(this.files[0]);this.value=''"></label>
     <label class="f">Ou cole os resultados (uma linha por concurso: número + 15 dezenas)</label><textarea id="pasteD" placeholder="3850 01 02 04 05 …"></textarea>
     <div style="margin-top:8px"><button class="btn sec" onclick="importText()">Adicionar</button></div>
@@ -548,6 +609,8 @@ function render() {
   $('#app').innerHTML = ({ jogar: vJogar, salvos: vSalvos, resultado: vResultado, ranking: vRanking, numeros: vNumeros, ajustes: vAjustes })[UI.tab]();
 }
 render();
+sincronizar(false);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') sincronizar(false); });
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
 </body>
