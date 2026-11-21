@@ -106,6 +106,15 @@ nav button{font-size:10.5px}
 .prevcard{border-color:rgba(255,184,77,.35);background:linear-gradient(180deg,rgba(255,184,77,.07),var(--card) 55%)}
 .prevballs .b{background:transparent;border:2px dashed #ffb84d;color:#ffd79a}
 .exemplo{background:rgba(177,76,255,.1);border-left:3px solid var(--ac);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:13.5px;color:#e9e2f5}
+.conta{background:rgba(61,220,151,.07);border:1px solid rgba(61,220,151,.25);border-radius:12px;padding:10px 12px;margin-top:10px;font-size:13px;color:#dff5ea}
+.conta .mu{font-size:11.5px}
+.bar i.over{background:var(--bad)}.bar i.quase{background:var(--warn)}
+.gastobox{padding:12px 16px}
+.pill.bad{background:rgba(255,107,107,.15);color:var(--bad);border-color:rgba(255,107,107,.4)}
+.diag{padding:10px 0;border-top:1px solid var(--line)}
+.tb{width:100%;border-collapse:collapse;margin-top:12px;font-size:13.5px}
+.tb th{color:var(--mu);font-weight:600;text-align:left;padding:5px 4px;border-bottom:1px solid var(--line)}
+.tb td{padding:5px 4px;border-bottom:1px solid #2a2140}
 .lnk{background:none;border:0;color:#ff9ab5;font:600 12px system-ui;padding:0}
 </style>
 </head>
@@ -131,11 +140,11 @@ const pct = v => (v * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })
 const MOLD = new Set([1,2,3,4,5,6,10,11,15,16,20,21,22,23,24,25]);
 const PRIMOS = new Set([2,3,5,7,11,13,17,19,23]);
 const sleep = () => new Promise(r => setTimeout(r, 0));
-function toast(t) { const e = $('#toast'); e.textContent = t; e.classList.add('show'); clearTimeout(e._t); e._t = setTimeout(() => e.classList.remove('show'), 2200); }
+function toast(t, ms = 2200) { const e = $('#toast'); e.textContent = t; e.classList.add('show'); clearTimeout(e._t); e._t = setTimeout(() => e.classList.remove('show'), ms); }
 
 /* ================= estado ================= */
 const KEY = 'lotolab-v1';
-const DEF = () => ({ draws: [], rounds: [], score: {}, bt: null, prevs: [], cfg: { jogos: 2, preco: 3.5, p11: 7, p12: 14, p13: 35, p14: 1500, p15: 1500000, janela: 20, prevFix: 13 } });
+const DEF = () => ({ draws: [], rounds: [], score: {}, bt: null, prevs: [], cfg: { jogos: 2, preco: 3.5, p11: 7, p12: 14, p13: 35, p14: 1500, p15: 1500000, janela: 20, prevFix: 13, limite: 0 } });
 const okData = v => typeof v === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(v) ? v : null;
 const esc = v => String(v ?? '').replace(/[&<>"'`]/g, ch => '&#' + ch.charCodeAt(0) + ';');
 // Valida tudo que vem do armazenamento ou de um backup: só números, ids conhecidos e datas no formato dd/mm/aaaa
@@ -149,12 +158,13 @@ function limpa(o) {
   const scs = x => { const r = {}; if (obj(x)) for (const k of IDS) { const v = sc(x[k]); if (v) r[k] = v; } return r; };
   if (obj(o.cfg)) for (const k in out.cfg) if (k in o.cfg) out.cfg[k] = Math.max(0, N(o.cfg[k], out.cfg[k]));
   out.cfg.jogos = Math.min(200, Math.max(1, Math.trunc(out.cfg.jogos))); out.cfg.janela = Math.min(500, Math.max(5, Math.trunc(out.cfg.janela))); out.cfg.prevFix = Math.min(14, Math.max(10, Math.trunc(out.cfg.prevFix)));
-  out.draws = arr(o.draws).filter(obj).map(d => ({ c: I(d.c), n: arr(d.n).map(x => I(x)).filter(x => x >= 1 && x <= 25), d: okData(d.d) }))
+  const limpaP = x => { if (!obj(x)) return undefined; const r = {}; for (let k = 11; k <= 15; k++) if (x[k] != null) { const v = N(x[k], -1); if (v >= 0 && v < 1e10) r[k] = Math.round(v * 100) / 100; } return Object.keys(r).length ? r : undefined; };
+  out.draws = arr(o.draws).filter(obj).map(d => ({ c: I(d.c), n: arr(d.n).map(x => I(x)).filter(x => x >= 1 && x <= 25), d: okData(d.d), p: limpaP(d.p) }))
     .filter(d => d.c > 0 && d.n.length === 15 && new Set(d.n).size === 15).map(d => (d.n.sort((a, b) => a - b), d));
   out.rounds = arr(o.rounds).filter(obj).map(r => {
     const st = sid(r.strat), shadow = {}; if (obj(r.shadow)) for (const k of IDS) if (Array.isArray(r.shadow[k])) shadow[k] = r.shadow[k].map(mask).filter(Boolean);
     const x = { id: I(r.id), c: I(r.c), ts: N(r.ts, Date.now()), strat: st, shadow, mine: arr(r.mine).map(mask).filter(Boolean), preco: Math.max(0, N(r.preco, out.cfg.preco)), res: r.res == null ? null : mask(r.res) };
-    if (Array.isArray(r.lotes)) x.lotes = r.lotes.filter(obj).map(l => ({ id: I(l.id), ts: N(l.ts, Date.now()), strat: sid(l.strat), prev: !!l.prev, jogos: arr(l.jogos).filter(obj).map(j => ({ m: mask(j.m), st: ['novo', 'salvo', 'rasc'].includes(j.st) ? j.st : 'rasc', sel: !!j.sel })).filter(j => j.m) })).filter(l => l.id > 0);
+    if (Array.isArray(r.lotes)) x.lotes = r.lotes.filter(obj).map(l => ({ id: I(l.id), ts: N(l.ts, Date.now()), strat: sid(l.strat), prev: !!l.prev, fora: !!l.fora, teim: obj(l.teim) && I(l.teim.n) > 1 ? { g: I(l.teim.g), i: Math.min(24, Math.max(1, I(l.teim.i, 1))), n: Math.min(24, Math.max(2, I(l.teim.n))) } : undefined, jogos: arr(l.jogos).filter(obj).map(j => ({ m: mask(j.m), st: ['novo', 'salvo', 'rasc'].includes(j.st) ? j.st : 'rasc', sel: !!j.sel })).filter(j => j.m) })).filter(l => l.id > 0);
     else { x.cands = arr(r.cands).filter(obj).map(c => ({ m: mask(c.m), s: st, sv: !!c.sv })).filter(c => c.m); x.apostou = r.apostou !== false; if (!x.cands.length) delete x.cands; }
     return x;
   }).filter(r => r.id > 0 && r.c > 0);
@@ -162,6 +172,8 @@ function limpa(o) {
   out.prevs = arr(o.prevs).filter(obj).map(p => ({ c: I(p.c), ts: N(p.ts), m: mask(p.m), b: arr(p.b).map(x => I(x)).filter(x => x >= 1 && x <= 25).slice(0, 3), pesos: obj(p.pesos) ? Object.fromEntries(['quentes', 'recentes', 'atrasados'].map(k => [k, Math.min(3, Math.max(1, I(p.pesos[k], 2)))])) : {}, hits: p.hits == null ? null : Math.min(15, Math.max(0, I(p.hits))) })).filter(p => p.c > 0 && p.m);
   if (obj(o.bt) && obj(o.bt.sc)) { out.bt = { K: I(o.bt.K), k: I(o.bt.k), ts: N(o.bt.ts), de: I(o.bt.de), ate: I(o.bt.ate), sc: scs(o.bt.sc) }; const bp = o.bt.prev; if (obj(bp) && I(bp.n) > 0) out.bt.prev = { n: I(bp.n), soma: I(bp.soma), h11: I(bp.h11), max: I(bp.max), min: I(bp.min) }; }
   if (obj(o.prox)) out.prox = { c: I(o.prox.c), d: okData(o.prox.d) };
+  if (obj(o.calib)) out.calib = { n: Math.max(0, I(o.calib.n)), ts: N(o.calib.ts) };
+  if (obj(o.diag)) { out.diag = {}; for (const f of ['Caixa', 'Comunidade']) { const x = o.diag[f]; if (obj(x)) out.diag[f] = { ok: !!x.ok, ms: Math.max(0, I(x.ms)), c: Math.max(0, I(x.c)), erro: String(x.erro ?? '').slice(0, 160), ts: N(x.ts) }; } }
   if (obj(o.sync)) out.sync = { ts: N(o.sync.ts), ok: !!o.sync.ok, src: ['Caixa', 'Comunidade'].includes(o.sync.src) ? o.sync.src : '?', c: I(o.sync.c) };
   return out;
 }
@@ -172,12 +184,22 @@ function migra() {
     if (!r.cands && !r.lotes) { const ok = r.apostou !== false; r.cands = (r.mine || []).map(m => ({ m, s: r.strat, sv: ok })); }
     delete r.apostou;
     if (!r.lotes) { r.lotes = [{ id: r.id, ts: r.ts, strat: r.strat, jogos: (r.cands || []).map(x => ({ m: x.m, st: x.sv ? 'salvo' : (r.res ? 'rasc' : 'novo'), sel: true })) }]; delete r.cands; }
-    r.mine = salvos(r); if (r.res) { r.hits = r.mine.map(g => pop(g & r.res)); r.premio = r.hits.reduce((a, x) => a + (x >= 11 ? (S.cfg['p' + x] || 0) : 0), 0); }
+    r.mine = salvos(r); if (r.res) { r.hits = r.mine.map(g => pop(g & r.res)); r.premio = r.hits.reduce((a, x) => a + prize(x, r.c), 0); }
   }
 }
-migra();
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Não consegui salvar no aparelho'); } }
-const prize = h => h >= 11 ? (S.cfg['p' + h] || 0) : 0;
+let _DM = null, _DMn = -1, _DMv = 0, _DMvv = -1;
+function dmap() { if (_DMn !== S.draws.length || _DMvv !== _DMv) { _DM = new Map(S.draws.map(d => [d.c, d])); _DMn = S.draws.length; _DMvv = _DMv; } return _DM; }
+// prêmio de uma faixa: usa o rateio real do concurso (vindo da API) quando existe; senão, o valor de Ajustes (reserva)
+function prize(h, c) { if (h < 11) return 0; if (c != null) { const d = dmap().get(c), v = d && d.p && d.p[h]; if (v > 0) return v; } return S.cfg['p' + h] || 0; }
+const temRateio = c => { const d = dmap().get(c); return !!(d && d.p); };
+// estimativa para a "conta honesta": média dos rateios reais mais recentes (ou o valor de Ajustes)
+function prizeEst(h) { const v = []; for (let i = S.draws.length - 1; i >= 0 && v.length < 50; i--) { const x = S.draws[i].p && S.draws[i].p[h]; if (x > 0) v.push(x); } return v.length ? v.reduce((a, b) => a + b, 0) / v.length : (S.cfg['p' + h] || 0); }
+// probabilidade exata de acertar k números com 1 jogo de 15 dezenas
+const PROB = (() => { const C = (n, k) => { let r = 1; for (let i = 1; i <= k; i++) r = r * (n - k + i) / i; return r; }, T = C(25, 15), o = []; for (let k = 0; k <= 15; k++) o[k] = C(15, k) * C(10, 15 - k) / T; return o; })();
+const P11 = PROB[11] + PROB[12] + PROB[13] + PROB[14] + PROB[15];
+let _uid = 0; function uid() { _uid = Math.max(Date.now(), _uid + 1); return _uid; }
+migra();
 
 /* ================= estatística ================= */
 function feat(m) { let p = 0, s = 0, mo = 0, q = 0; for (let i = 1; i <= 25; i++) if (m & (1 << (i - 1))) { if (i % 2 === 0) p++; s += i; if (MOLD.has(i)) mo++; if (PRIMOS.has(i)) q++; } return { p, s, mo, q }; }
@@ -316,11 +338,17 @@ function rowsToDraws(rows) {
 function mergeDraws(list) {
   let next = (S.draws.at(-1)?.c || 0) + 1, add = 0;
   const have = new Map(S.draws.map(d => [d.c, d]));
-  for (const d of list) { if (d.c == null) d.c = next++; if (!have.has(d.c)) { have.set(d.c, d); add++; } }
-  S.draws = [...have.values()].sort((a, b) => a.c - b.c);
+  const comP = new Set();
+  for (const d of list) {
+    if (d.c == null) d.c = next++;
+    if (!have.has(d.c)) { have.set(d.c, d); add++; if (d.p) comP.add(d.c); }
+    else if (d.p && !have.get(d.c).p) { have.get(d.c).p = d.p; comP.add(d.c); }
+  }
+  S.draws = [...have.values()].sort((a, b) => a.c - b.c); _DMv++;
+  for (const r of S.rounds) if (r.res && comP.has(r.c)) recalc(r);
   // confere rodadas pendentes que agora têm resultado
   let conf = 0; for (const r of S.rounds) if (!r.res) { const d = have.get(r.c); if (d) { aplicaResultado(r, toMask(d.n)); conf++; } }
-  save(); return { add, conf };
+  save(); setTimeout(calibrar, 300); return { add, conf };
 }
 async function importFile(f) {
   try {
@@ -353,19 +381,41 @@ function normaliza(j) {
   const n = dz.map(Number).filter(x => x >= 1 && x <= 25).sort((a, b) => a - b);
   if (new Set(n).size !== 15) return null;
   const proxC = +(j.numeroConcursoProximo ?? j.proximoConcurso ?? (c + 1)), proxD = j.dataProximoConcurso ?? j.dataProxConcurso ?? null;
-  return { c, d: okData(j.dataApuracao ?? j.data), n, prox: { c: Number.isFinite(proxC) ? proxC : c + 1, d: okData(proxD) } };
+  const rt = j.listaRateioPremio ?? j.premiacoes; let p = null;
+  if (Array.isArray(rt)) { p = {}; for (const f of rt) { if (!f || typeof f !== 'object') continue; const mm = String(f.descricaoFaixa ?? f.descricao ?? '').match(/(\d{2})\s*acertos/i), k = mm ? +mm[1] : (Number.isFinite(+f.faixa) ? 16 - +f.faixa : 0), v = +f.valorPremio; if (k >= 11 && k <= 15 && Number.isFinite(v) && v >= 0 && v < 1e10) p[k] = Math.round(v * 100) / 100; } if (!Object.keys(p).length) p = null; }
+  return { c, d: okData(j.dataApuracao ?? j.data), n, p, prox: { c: Number.isFinite(proxC) ? proxC : c + 1, d: okData(proxD) } };
 }
-async function buscaConcurso(c) {
+const errTxt = e => e && e.name === 'AbortError' ? 'tempo esgotado (12 s)' : /Failed to fetch|NetworkError|Load failed|fetch/i.test(String(e && e.message)) ? 'bloqueado pelo navegador (CORS) ou sem internet' : String((e && e.message) || e || 'erro');
+async function tentaFonte(f, c) {
+  const t0 = performance.now();
+  try { const r = normaliza(await getJSON(f.url(c))); if (!r) throw new Error('resposta sem 15 dezenas válidas'); return { ok: true, ms: Math.round(performance.now() - t0), c: r.c, r }; }
+  catch (e) { return { ok: false, ms: Math.round(performance.now() - t0), erro: errTxt(e) }; }
+}
+function gravaDiag(nome, d) { S.diag = S.diag || {}; S.diag[nome] = { ok: d.ok, ms: d.ms, c: d.c || 0, erro: d.ok ? '' : String(d.erro || '').slice(0, 160), ts: Date.now() }; }
+async function buscaConcurso(c, diag) {
   let err;
-  for (const f of FONTES) { try { const r = normaliza(await getJSON(f.url(c))); if (r) return { ...r, src: f.nome }; } catch (e) { err = e; } }
-  throw err || new Error('sem resposta');
+  for (const f of FONTES) { const d = await tentaFonte(f, c); if (diag) gravaDiag(f.nome, d); if (d.ok) return { ...d.r, src: f.nome }; err = d.erro; }
+  throw new Error(err || 'sem resposta');
+}
+async function testarFontes() {
+  if (UI.testando) return; UI.testando = true; render();
+  const res = await Promise.all(FONTES.map(f => tentaFonte(f)));
+  res.forEach((d, i) => gravaDiag(FONTES[i].nome, d)); save(); UI.testando = false; render();
+  toast(res.map((d, i) => `${FONTES[i].nome}: ${d.ok ? '✅' : '❌'}`).join(' · '), 3500);
+}
+function diagCard() {
+  const D = S.diag || {}, hora = ts => ts ? new Date(ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  return `<div class="card"><h2>🩺 Diagnóstico das fontes</h2><p class="mu" style="margin-top:0">Mostra se cada fonte de resultados respondeu na última tentativa (inclusive nas buscas automáticas).</p>
+    ${FONTES.map(f => { const d = D[f.nome]; return `<div class="diag"><div class="row sp"><b>${f.nome}</b><span class="pill ${d ? (d.ok ? 'ok' : 'bad') : ''}">${d ? (d.ok ? '✅ respondeu' : '❌ falhou') : '– não testada'}</span></div>
+      ${d ? `<div class="mu">${d.ms} ms${d.ok ? ` · concurso ${d.c}` : ''} · ${hora(d.ts)}</div>${d.ok ? '' : `<div class="mu neg" style="font-size:12.5px">Erro: ${esc(d.erro)}</div>`}` : ''}</div>`; }).join('')}
+    <button class="btn sec" style="margin-top:10px" ${UI.testando ? 'disabled' : ''} onclick="testarFontes()">${UI.testando ? 'Testando…' : 'Testar as duas fontes agora'}</button></div>`;
 }
 let sincronizando = false;
 async function sincronizar(manual) {
   if (sincronizando) return; if (!manual && S.sync && Date.now() - S.sync.ts < 10 * 60e3 && S.sync.ok) return;
   sincronizando = true; if (manual) { toast('Buscando resultado…'); }
   try {
-    const ult = await buscaConcurso(); const last = S.draws.at(-1)?.c || 0, novos = [];
+    const ult = await buscaConcurso(undefined, true); const last = S.draws.at(-1)?.c || 0, novos = [];
     S.prox = ult.prox;
     if (!last) { S.sync = { ts: Date.now(), ok: true, src: ult.src, c: ult.c }; save(); if (manual) toast('Sem histórico ainda: importe a planilha ou baixe o histórico em Ajustes'); return; }
     // preenche buracos dos últimos 30 concursos (ex.: dias sem abrir o app)
@@ -373,7 +423,7 @@ async function sincronizar(manual) {
     for (let c = Math.max(S.draws[0].c, ult.c - 30); c < ult.c; c++) if (!tem.has(c)) { try { novos.push(await buscaConcurso(c)); } catch (e) {} }
     novos.push(ult);
     const antes = S.rounds.filter(r => !r.res).map(r => r.id);
-    const r = mergeDraws(novos.map(x => ({ c: x.c, n: x.n, d: x.d })));
+    const r = mergeDraws(novos.map(x => ({ c: x.c, n: x.n, d: x.d, p: x.p || undefined })));
     S.sync = { ts: Date.now(), ok: true, src: ult.src, c: ult.c }; save();
     const conf = S.rounds.filter(x => antes.includes(x.id) && x.res), ganho = conf.reduce((a, x) => a + (x.premio || 0), 0);
     if (r.add) toast(`Concurso ${ult.c} chegou` + (conf.length ? (ganho ? ` · 🏆 você ganhou ${brl(ganho)}!` : ' · suas pastas foram conferidas') : ''));
@@ -387,7 +437,7 @@ async function baixarHistorico() {
   toast('Baixando histórico completo…');
   try {
     const arr = await getJSON('https://loteriascaixa-api.herokuapp.com/api/lotofacil');
-    const list = (Array.isArray(arr) ? arr : []).map(normaliza).filter(Boolean).map(x => ({ c: x.c, n: x.n, d: x.d }));
+    const list = (Array.isArray(arr) ? arr : []).map(normaliza).filter(Boolean).map(x => ({ c: x.c, n: x.n, d: x.d, p: x.p || undefined }));
     if (list.length < 100) throw new Error('poucos dados');
     const r = mergeDraws(list); toast(`${r.add} concursos adicionados`); render();
   } catch (e) { toast('Não deu para baixar. Use a planilha da Caixa.'); }
@@ -437,7 +487,8 @@ function veredito(n, media) {
 function apostarPrev(st) {
   const p = S.prevs.find(x => x.c === (S.draws.at(-1)?.c || 0) + 1); if (!p) return;
   const r = garanteRodada(); if (r.lotes.some(l => l.prev && l.jogos.some(j => j.m === p.m))) return toast('A previsão já está numa pasta');
-  r.lotes.push({ id: Date.now(), ts: Date.now(), strat: 'previsao', prev: true, jogos: [{ m: p.m, st, sel: true }] }); r.mine = salvos(r); save(); render();
+  if (st === 'salvo' && !checaLimite(S.cfg.preco, 'prev' + p.c)) return;
+  r.lotes.push({ id: uid(), ts: Date.now(), strat: 'previsao', prev: true, jogos: [{ m: p.m, st, sel: true }] }); r.mine = salvos(r); save(); render();
   toast(st === 'salvo' ? 'Previsão salva para apostar' : 'Previsão guardada como rascunho');
 }
 function prevCard() {
@@ -467,41 +518,95 @@ function prevCard() {
 function rodadaAtual() { const c = (S.draws.at(-1)?.c || 0) + 1; return { c, r: S.rounds.find(x => x.c === c && !x.res) }; }
 function salvos(r) { return r.lotes.flatMap(l => l.jogos.filter(j => j.st === 'salvo').map(j => j.m)); }
 const findL = (rid, lid) => { const r = S.rounds.find(x => x.id === rid); return [r, r.lotes.find(l => l.id === lid)]; };
+// jogos "sombra" de cada estratégia, só para o ranking (sempre na quantidade padrão e antes do resultado)
+function sombras() { const h = hist(), shadow = {}; for (const s of STRATS) shadow[s.id] = gerar(h, s.id, S.cfg.jogos); return shadow; }
 function garanteRodada() {
-  let { c, r } = rodadaAtual(); if (r) return r;
-  // jogos "sombra" de cada estratégia, só para o ranking (sempre na quantidade padrão)
-  const h = hist(), shadow = {}; for (const s of STRATS) shadow[s.id] = gerar(h, s.id, S.cfg.jogos);
-  r = { id: Date.now(), c, ts: Date.now(), strat: lider(), shadow, lotes: [], mine: [], preco: S.cfg.preco, res: null }; S.rounds.push(r); return r;
+  let { c, r } = rodadaAtual();
+  if (r) { if (!Object.keys(r.shadow || {}).length) { r.shadow = sombras(); r.strat = lider(); } return r; }
+  r = { id: uid(), c, ts: Date.now(), strat: lider(), shadow: sombras(), lotes: [], mine: [], preco: S.cfg.preco, res: null }; S.rounds.push(r); return r;
+}
+// rodada de qualquer concurso (teimosinha e jogos de fora); sombras só para o concurso atual
+function rodadaPara(c) {
+  if (c === rodadaAtual().c) return garanteRodada();
+  let r = S.rounds.find(x => x.c === c); if (r) return r;
+  r = { id: uid(), c, ts: Date.now(), strat: lider(), shadow: {}, lotes: [], mine: [], preco: S.cfg.preco, res: null }; S.rounds.push(r); return r;
+}
+function garanteSombras() { const { r } = rodadaAtual(); if (r && !Object.keys(r.shadow || {}).length && S.draws.length >= 30) { r.shadow = sombras(); save(); } }
+function recalc(r) { r.mine = salvos(r); if (r.res) { r.hits = r.mine.map(g => pop(g & r.res)); r.premio = r.hits.reduce((a, x) => a + prize(x, r.c), 0); } }
+// limite de gasto do mês (pela data em que os jogos foram salvos)
+function gastoMes() {
+  const now = new Date(), y = now.getFullYear(), mo = now.getMonth(); let g = 0;
+  for (const r of S.rounds) for (const l of (r.lotes || [])) { const d = new Date(l.ts); if (d.getFullYear() === y && d.getMonth() === mo) g += l.jogos.filter(j => j.st === 'salvo').length * (r.preco || S.cfg.preco); }
+  return g;
+}
+function checaLimite(custo, chave) {
+  const lim = S.cfg.limite || 0, g = gastoMes(); if (!lim || g + custo <= lim) return true;
+  if (UI.limOk === chave) { UI.limOk = null; return true; }
+  UI.limOk = chave; toast(`⚠️ Isso passa do seu limite do mês: ${brl(g + custo)} de ${brl(lim)}. Toque de novo para salvar mesmo assim.`, 6000); return false;
 }
 function gerarMais() {
   const h = hist(), k = Math.max(1, Math.min(200, +UI.qtd || S.cfg.jogos)), sid = lider(), r = garanteRodada();
   const usados = r.lotes.flatMap(l => l.jogos.map(j => j.m));
-  r.lotes.push({ id: Date.now(), ts: Date.now(), strat: sid, jogos: gerar(h, sid, k, usados).map(m => ({ m, st: 'novo', sel: true })) });
+  r.lotes.push({ id: uid(), ts: Date.now(), strat: sid, jogos: gerar(h, sid, k, usados).map(m => ({ m, st: 'novo', sel: true })) });
   save(); render();
 }
 function selJ(rid, lid, i) { const [, l] = findL(rid, lid); l.jogos[i].sel = !l.jogos[i].sel; save(); render(); }
 function selTodos(rid, lid, v) { const [, l] = findL(rid, lid); l.jogos.forEach(j => { if (j.st === 'novo') j.sel = v; }); save(); render(); }
+const TEIM = [1, 3, 6, 9, 12, 18, 24];
 function guardar(rid, lid, st) {
-  const [r, l] = findL(rid, lid); let n = 0; l.jogos.forEach(j => { if (j.st === 'novo' && j.sel) { j.st = st; n++; } });
+  const [r, l] = findL(rid, lid), marc = l.jogos.filter(j => j.st === 'novo' && j.sel), n = marc.length;
   if (!n) return toast('Marque algum jogo');
-  l.jogos = l.jogos.filter(j => j.st !== 'novo'); r.mine = salvos(r); r.preco = S.cfg.preco; save(); render();
-  toast(st === 'salvo' ? `${n} jogo(s) salvo(s) na pasta` : `${n} rascunho(s) guardado(s) na pasta`);
+  const t = st === 'salvo' ? (UI.teim[lid] || 1) : 1;
+  if (st === 'salvo' && !checaLimite(n * S.cfg.preco * t, `l${lid}:${n}:${t}`)) return;
+  marc.forEach(j => j.st = st);
+  l.jogos = l.jogos.filter(j => j.st !== 'novo'); r.preco = S.cfg.preco;
+  if (t > 1) {
+    // teimosinha: a mesma aposta nos próximos concursos, uma pasta para cada
+    l.teim = { g: l.id, i: 1, n: t };
+    for (let i = 2; i <= t; i++) { const r2 = rodadaPara(r.c + i - 1); r2.preco = S.cfg.preco; r2.lotes.push({ id: uid(), ts: l.ts, strat: l.strat, prev: !!l.prev, teim: { g: l.id, i, n: t }, jogos: marc.map(j => ({ m: j.m, st: 'salvo', sel: true })) }); recalc(r2); }
+  }
+  recalc(r); save(); render();
+  toast(st === 'salvo' ? (t > 1 ? `🔁 Teimosinha: ${n} jogo(s) × ${t} concursos (${r.c} a ${r.c + t - 1}) · ${brl(n * S.cfg.preco * t)}` : `${n} jogo(s) salvo(s) na pasta`) : `${n} rascunho(s) guardado(s) na pasta`, t > 1 ? 4000 : 2200);
+}
+// jogos feitos fora do app: um por linha, 15 dezenas ("Jogo 1: ..." também funciona)
+function parseFora(t) {
+  const ok = [], bad = [];
+  String(t || '').split(/\r?\n/).forEach((ln, i) => {
+    const x = ln.replace(/^[^:]*:/, ''); if (!x.trim()) return;
+    const ns = (x.match(/\d+/g) || []).map(Number), u = [...new Set(ns)].filter(n => n >= 1 && n <= 25);
+    if (u.length === 15 && ns.length === 15) { const m = toMask(u); if (!ok.includes(m)) ok.push(m); } else bad.push({ i: i + 1, n: u.length });
+  });
+  return { ok, bad };
+}
+function foraInfo() {
+  const e = $('#foraInfo'); if (!e) return; const { ok, bad } = parseFora(UI.foraT);
+  e.textContent = !ok.length && !bad.length ? 'Cole os jogos acima.' : `✅ ${ok.length} jogo(s) válido(s)` + (bad.length ? ` · ⚠️ ignorado(s): ${bad.slice(0, 5).map(b => `linha ${b.i} (${b.n} dezenas)`).join(', ')}${bad.length > 5 ? '…' : ''}` : '');
+}
+function salvarFora(st) {
+  const c = Math.trunc(+($('#foraC') || {}).value || 0), { ok } = parseFora(UI.foraT);
+  if (!(c > 0)) return toast('Informe o concurso'); if (!ok.length) return toast('Nenhum jogo válido (precisa de 15 dezenas por linha)');
+  if (st === 'salvo' && !checaLimite(ok.length * S.cfg.preco, `fora:${c}:${ok.length}`)) return;
+  const r = rodadaPara(c), d = dmap().get(c); r.preco = S.cfg.preco;
+  r.lotes.push({ id: uid(), ts: Date.now(), strat: 'padrao', fora: true, jogos: ok.map(m => ({ m, st, sel: true })) });
+  if (d && !r.res) aplicaResultado(r, toMask(d.n)); else recalc(r);
+  UI.foraT = ''; save(); render();
+  if (d) { const hs = ok.map(m => pop(m & toMask(d.n))), pr = hs.reduce((a, x) => a + prize(x, c), 0); toast(`Conferido na hora: melhor jogo ${Math.max(...hs)} acertos${pr ? ' · ' + (st === 'salvo' ? 'prêmio ' : 'teria ganho ') + brl(pr) : ''}`, 4000); }
+  else toast(`${ok.length} jogo(s) ${st === 'salvo' ? 'salvo(s)' : 'guardado(s) como rascunho'} no concurso ${c}`);
 }
 function descartarL(rid, lid) { const [r, l] = findL(rid, lid); l.jogos = l.jogos.filter(j => j.st !== 'novo'); if (!l.jogos.length) r.lotes = r.lotes.filter(x => x !== l); save(); render(); }
 function apagarPasta(rid, lid) {
   if (UI.apagar !== lid) { UI.apagar = lid; toast('Toque de novo em "Apagar pasta" para confirmar'); return; }
-  const [r, l] = findL(rid, lid); r.lotes = r.lotes.filter(x => x !== l); r.mine = salvos(r);
-  if (r.res) { r.hits = r.mine.map(g => pop(g & r.res)); r.premio = r.hits.reduce((a, x) => a + prize(x), 0); }
+  const [r, l] = findL(rid, lid); r.lotes = r.lotes.filter(x => x !== l); recalc(r);
   UI.apagar = null; save(); render(); toast('Pasta apagada');
 }
 function aplicaResultado(r, m) {
-  if (r.lotes) { r.lotes.forEach(l => l.jogos.forEach(j => { if (j.st === 'novo') j.st = 'rasc'; })); r.mine = salvos(r); }
-  r.res = m; r.hits = r.mine.map(g => pop(g & m)); r.premio = r.hits.reduce((a, x) => a + prize(x), 0);
+  if (r.lotes) r.lotes.forEach(l => l.jogos.forEach(j => { if (j.st === 'novo') j.st = 'rasc'; }));
+  r.res = m; recalc(r);
   for (const sid in r.shadow) { S.score[sid] = S.score[sid] || emptySc(); for (const g of r.shadow[sid]) acc(S.score[sid], pop(g & m)); }
 }
 function conferir(c, nums) {
   const m = toMask(nums);
-  if (!S.draws.some(d => d.c === c)) { S.draws.push({ c, n: nums.slice().sort((a, b) => a - b) }); S.draws.sort((a, b) => a.c - b.c); }
+  if (!S.draws.some(d => d.c === c)) { S.draws.push({ c, n: nums.slice().sort((a, b) => a - b) }); S.draws.sort((a, b) => a.c - b.c); _DMv++; }
   const r = S.rounds.find(r => r.c === c && !r.res);
   if (r) aplicaResultado(r, m);
   save(); UI.sel = new Set(); UI.ultimo = r ? r.id : null; UI.ultimoC = c; render();
@@ -514,8 +619,9 @@ function placar() {
 }
 
 /* ================= teste com o passado ================= */
-async function backtest(K, k) {
-  const D = S.draws, N = D.length; K = Math.min(K, N - 50); if (K < 10) return toast('Preciso de pelo menos 60 concursos');
+async function backtest(K, k, auto) {
+  if (UI.bt) return false;
+  const D = S.draws, N = D.length; K = Math.min(K, N - 50); if (K < 10) { if (!auto) toast('Preciso de pelo menos 60 concursos'); return false; }
   UI.bt = { run: true, p: 0 }; render();
   const h = new Hist(); for (let i = 0; i < N - K; i++) h.add(D[i].n);
   const sc = {}, pv = { n: 0, soma: 0, h11: 0, max: 0, min: 15 }; STRATS.forEach(s => sc[s.id] = emptySc());
@@ -526,11 +632,21 @@ async function backtest(K, k) {
     h.add(D[i].n);
     if (i % 10 === 0) { UI.bt.p = (i - (N - K)) / K; const b = $('#btp'); if (b) b.style.width = pct(UI.bt.p); await sleep(); }
   }
-  S.bt = { K, k, ts: Date.now(), sc, prev: pv, de: D[N - K].c, ate: D[N - 1].c }; save(); UI.bt = null; render(); toast('Teste concluído');
+  S.bt = { K, k, ts: Date.now(), sc, prev: pv, de: D[N - K].c, ate: D[N - 1].c }; save(); UI.bt = null; render(); if (!auto) toast('Teste concluído'); return true;
+}
+// calibração automática: uma única vez, quando há 300+ concursos e o ranking está vazio
+async function calibrar() {
+  if (S.calib || UI.bt || S.draws.length < 300) return;
+  if (STRATS.some(s => S.score[s.id] && S.score[s.id].js)) return;
+  const K = Math.min(1000, S.draws.length - 50);
+  toast('⏳ Calibrando o ranking com o passado…', 4000);
+  if (!(await backtest(K, 10, true))) return;
+  S.score = JSON.parse(JSON.stringify(S.bt.sc)); S.calib = { n: S.bt.K, ts: Date.now() }; save(); render();
+  toast(`✅ Ranking calibrado automaticamente com ${S.bt.K} concursos`, 4000);
 }
 
 /* ================= interface ================= */
-const UI = { op: {}, sim: {}, tab: 'jogar', sel: new Set(), ultimo: null, numJ: 'todos', bt: null };
+const UI = { op: {}, sim: {}, teim: {}, jsub: 'gerar', foraT: '', tab: 'jogar', sel: new Set(), ultimo: null, numJ: 'todos', bt: null };
 const ICONS = {
   jogar: '<path d="M12 3l2.6 5.6 6.1.6-4.6 4.1 1.3 6-5.4-3.1-5.4 3.1 1.3-6L3.3 9.2l6.1-.6z"/>',
   salvos: '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
@@ -560,29 +676,73 @@ function vJogar() {
     <ol class="steps"><li>No site da Caixa, abra a Lotofácil e toque em <b>Download de resultados</b>.</li><li>Aqui no app, vá em <b>Ajustes → Importar planilha</b> e escolha o arquivo.</li><li>Volte aqui e toque em <b>Gerar jogos</b>.</li></ol>
     <a href="https://loterias.caixa.gov.br/Paginas/Lotofacil.aspx" target="_blank" rel="noopener">Abrir site da Caixa</a>
     <div style="margin-top:14px"><button class="btn" onclick="go('ajustes')">Importar planilha</button></div></div>`;
-  const { c, r } = rodadaAtual(), p = placar(), sid = lider(), qtd = UI.qtd || S.cfg.jogos;
-  let h = `<div class="card"><div class="row sp"><h2 style="margin:0">Concurso ${c}</h2><span class="pill ac">${SN(sid)}</span></div>
+  const { c, r } = rodadaAtual(), p = placar(), sid = lider(), qtd = UI.qtd || S.cfg.jogos, lim = S.cfg.limite || 0, gm = gastoMes();
+  const mes = new Date().toLocaleDateString('pt-BR', { month: 'long' });
+  let h = `<div class="card gastobox"><div class="row sp"><span class="mu">Gasto em ${mes}</span><b class="${lim && gm > lim ? 'neg' : ''}">${brl(gm)}${lim ? ` <span class="mu">de ${brl(lim)}</span>` : ''}</b></div>
+    ${lim ? `<div class="bar" style="margin-top:8px"><i class="${gm > lim ? 'over' : gm > lim * .8 ? 'quase' : ''}" style="width:${Math.min(100, gm / lim * 100)}%"></i></div>` : `<p class="mu" style="margin:4px 0 0;font-size:12px">Defina um limite por mês em Ajustes, se quiser.</p>`}</div>`;
+  h += `<div class="card"><div class="seg"><button class="${UI.jsub !== 'fora' ? 'on' : ''}" onclick="UI.jsub='gerar';render()">🎲 Gerar</button><button class="${UI.jsub === 'fora' ? 'on' : ''}" onclick="UI.jsub='fora';render()">📥 De fora</button></div>`;
+  if (UI.jsub === 'fora') {
+    h += `<p class="mu" style="margin-top:0">Cole jogos feitos fora do app (na lotérica, no app da Caixa, de um bolão…). Um jogo por linha, com 15 dezenas.</p>
+      <label class="f">Concurso</label><input id="foraC" type="number" inputmode="numeric" min="1" value="${UI.foraC || c}" oninput="UI.foraC=+this.value">
+      <label class="f">Jogos (um por linha)</label><textarea id="foraT" placeholder="01 02 03 04 05 06 07 08 09 10 11 12 13 14 15&#10;Jogo 2: 02 04 06 …" oninput="UI.foraT=this.value;foraInfo()">${esc(UI.foraT)}</textarea>
+      <p class="mu" id="foraInfo" style="margin:8px 0 0">Cole os jogos acima.</p>
+      <button class="btn" style="margin-top:12px" onclick="salvarFora('salvo')">Salvar como apostados</button>
+      <button class="btn sec" style="margin-top:8px" onclick="salvarFora('rasc')">Guardar como rascunho</button>
+      <p class="mu" style="margin:10px 0 0;font-size:12.5px">Se o resultado desse concurso já existir, o app confere na hora.</p></div>`;
+    setTimeout(foraInfo, 0);
+  } else {
+  h += `<div class="row sp"><h2 style="margin:0">Concurso ${c}</h2><span class="pill ac">${SN(sid)}</span></div>
     ${S.prox && S.prox.c === c && S.prox.d ? `<p style="margin:6px 0 0">📅 Sorteio em <b>${esc(S.prox.d)}</b></p>` : ''}
     <p class="mu" style="margin:6px 0 12px">Estratégia escolhida automaticamente: a que lidera o ranking.</p>
+    ${UI.bt ? `<div class="note" style="margin:0 0 10px">⏳ Calibrando o ranking com o passado… aguarde um pouco.</div>` : ''}
     <label class="f">Quantos jogos gerar</label><div class="row" style="flex-wrap:nowrap"><input type="number" inputmode="numeric" min="1" max="200" value="${qtd}" style="width:90px" oninput="UI.qtd=+this.value;document.getElementById('gbtn').textContent='Gerar '+(+this.value||1)+' jogo(s) · '+brl((+this.value||1)*S.cfg.preco)">
     <button class="btn" id="gbtn" onclick="gerarMais()">Gerar ${qtd} jogo(s) · ${brl(qtd * S.cfg.preco)}</button></div>`;
   const novos = r ? r.lotes.filter(l => l.jogos.some(j => j.st === 'novo')) : [];
   for (const l of novos) {
-    const js = l.jogos.map((j, i) => [j, i]).filter(([j]) => j.st === 'novo'), nSel = js.filter(([j]) => j.sel).length;
+    const js = l.jogos.map((j, i) => [j, i]).filter(([j]) => j.st === 'novo'), nSel = js.filter(([j]) => j.sel).length, t = UI.teim[l.id] || 1;
     h += `<div class="lote"><div class="row sp"><b>Gerados às ${new Date(l.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</b><span><button class="lnk" onclick="selTodos(${r.id},${l.id},true)">marcar todos</button> · <button class="lnk" onclick="selTodos(${r.id},${l.id},false)">nenhum</button></span></div>
       ${js.map(([j, i], n) => `<div class="game cand ${j.sel ? 'sel' : ''}" onclick="selJ(${r.id},${l.id},${i})"><div class="lbl"><span>${j.sel ? '☑' : '☐'} Jogo ${n + 1}</span></div>${balls(j.m)}</div>`).join('')}
-      <button class="btn" style="margin-top:10px" ${nSel ? '' : 'disabled'} onclick="guardar(${r.id},${l.id},'salvo')">Salvar ${nSel} para apostar · ${brl(nSel * S.cfg.preco)}</button>
+      ${contaHonesta(nSel, t)}
+      <label class="f">🔁 Teimosinha (repetir a aposta)</label><select onchange="UI.teim[${l.id}]=+this.value;render()">${TEIM.map(v => `<option value="${v}" ${v === t ? 'selected' : ''}>${v === 1 ? 'Só este concurso' : `${v} concursos (${c} a ${c + v - 1})`}</option>`).join('')}</select>
+      <button class="btn" style="margin-top:10px" ${nSel ? '' : 'disabled'} onclick="guardar(${r.id},${l.id},'salvo')">Salvar ${nSel} para apostar · ${brl(nSel * S.cfg.preco * t)}${t > 1 ? ` (🔁 ${t}×)` : ''}</button>
       <div class="grid2" style="margin-top:8px"><button class="btn sec" ${nSel ? '' : 'disabled'} onclick="guardar(${r.id},${l.id},'rasc')">Guardar como rascunho</button><button class="btn sec" onclick="descartarL(${r.id},${l.id})">Descartar</button></div></div>`;
   }
   if (r) { const sv = salvos(r).length, rs = r.lotes.reduce((a, l) => a + l.jogos.filter(j => j.st === 'rasc').length, 0), np = r.lotes.filter(l => l.jogos.some(j => j.st !== 'novo')).length;
     if (np) h += `<div class="row sp" style="margin-top:14px"><span class="mu">Concurso ${c}: <b style="color:var(--tx)">${sv}</b> para apostar · ${rs} rascunho(s) em ${np} pasta(s)</span><button class="btn sec sm" onclick="go('salvos')">Ver pastas</button></div>`; }
   h += `</div>`;
+  }
   h += `<div class="card"><h2>Meu placar</h2><div class="stats">
     <div class="stat"><b>${brl(p.gasto)}</b><span>gasto</span></div>
     <div class="stat"><b>${brl(p.ganho)}</b><span>ganho</span></div>
     <div class="stat"><b class="${p.saldo >= 0 ? 'pos' : 'neg'}">${brl(p.saldo)}</b><span>saldo</span></div></div>
-    <p class="mu" style="margin:10px 0 0">${p.n} concurso(s) apostado(s) · premiado em ${p.prem}</p></div>`;
+    <p class="mu" style="margin:10px 0 0">${p.n} concurso(s) apostado(s) · premiado em ${p.prem}</p>
+    <details style="margin-top:12px" ${UI.stOpen ? 'open' : ''} ontoggle="UI.stOpen=this.open"><summary class="mu">▸ 📊 Minhas estatísticas</summary>${minhasStats()}</details></div>`;
   return h;
+}
+// conta honesta: chance de pelo menos um prêmio e retorno médio por aposta
+function contaHonesta(n, t = 1) {
+  const ev = [11, 12, 13, 14, 15].reduce((a, k) => a + PROB[k] * prizeEst(k), 0), pr = S.cfg.preco || 3.5;
+  if (!n) return `<div class="conta">🧮 Marque jogos para ver a conta honesta.</div>`;
+  const p1 = 1 - Math.pow(1 - P11, n), pt = 1 - Math.pow(1 - P11, n * t);
+  return `<div class="conta">🧮 <b>Conta honesta:</b> com ${n} jogo(s), a chance de pelo menos um prêmio (11+) neste concurso é <b>≈ ${pct(p1)}</b>${t > 1 ? `, e em ${t} concursos ≈ ${pct(pt)}` : ''}. Em média, cada aposta de ${brl(pr)} devolve <b>${brl(ev)}</b> em prêmios (${pct(ev / pr)}). <span class="mu">Os jogos não são independentes, então a chance é aproximada.</span></div>`;
+}
+// estatísticas pessoais: só jogos salvos para apostar e já conferidos
+function minhasStats() {
+  const hs = [], anos = {}, dm = dmap(); let best = null;
+  for (const r of S.rounds) if (r.res && r.mine.length) {
+    const d = dm.get(r.c), ano = d && d.d ? d.d.slice(6) : String(new Date(r.ts).getFullYear()), a = anos[ano] = anos[ano] || { g: 0, w: 0, n: 0 };
+    a.g += r.mine.length * (r.preco || S.cfg.preco); a.w += r.premio || 0; a.n++;
+    r.hits.forEach(x => { hs.push(x); if (!best || x > best.x) best = { x, c: r.c }; });
+  }
+  const n = hs.length; if (!n) return `<p class="mu">Ainda sem jogos conferidos. Salve jogos para apostar e espere o resultado.</p>`;
+  const med = hs.reduce((a, b) => a + b, 0) / n, mg = 2 * 1.2247 / Math.sqrt(n), f2 = v => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), f1 = v => v === 0 ? '0' : v < 0.01 ? '< 0,01' : v.toLocaleString('pt-BR', { maximumFractionDigits: v < 1 ? 2 : 1 });
+  const cont = k => hs.filter(x => x === k).length, faixa = [11, 12, 13, 14, 15];
+  const ver = n < 30 ? 'Ainda são poucos jogos para comparar.' : med > 9 + mg ? 'Acima do que a sorte costuma dar.' : med < 9 - mg ? 'Abaixo do que a sorte costuma dar.' : 'Dentro do esperado para a sorte.';
+  return `<div class="stats" style="margin-top:10px"><div class="stat"><b>${n}</b><span>jogos conferidos</span></div><div class="stat"><b>${f2(med)}</b><span>média (esperado 9,00)</span></div><div class="stat"><b>${best.x}</b><span>melhor marca (#${best.c})</span></div></div>
+    <p class="mu" style="margin:8px 0 0;font-size:12.5px">${ver}</p>
+    <table class="tb"><tr><th>Pontos</th><th>Você fez</th><th>Esperado</th></tr>${faixa.map(k => `<tr><td>${k}</td><td><b>${cont(k)}</b></td><td>${f1(n * PROB[k])}</td></tr>`).join('')}
+    <tr><td><b>11+</b></td><td><b>${hs.filter(x => x >= 11).length}</b></td><td>${f1(n * P11)}</td></tr></table>
+    <table class="tb"><tr><th>Ano</th><th>Gasto</th><th>Ganho</th><th>Saldo</th></tr>${Object.keys(anos).sort().reverse().map(y => { const a = anos[y]; return `<tr><td>${esc(y)}</td><td>${brl(a.g)}</td><td>${brl(a.w)}</td><td class="${a.w - a.g >= 0 ? 'pos' : 'neg'}">${brl(a.w - a.g)}</td></tr>`; }).join('')}</table>`;
 }
 
 function vAjuda() {
@@ -639,6 +799,26 @@ function vAjuda() {
   sec('🌐 Resultados automáticos', `<p>Quando você abre o app, ele pergunta na internet "qual foi o último sorteio?". Primeiro para a Caixa e, se ela não responder, para uma API gratuita.</p>
     ${ex('você abre o app no domingo de manhã. Ele busca, vê que saiu o concurso de sábado, confere suas pastas e avisa: "Concurso chegou · 🏆 você ganhou R$ 7,00!".')}
     <p>Se não tiver internet, digite o resultado na aba <b>Resultado</b>.</p>`) +
+  sec('🆕 Calibração automática do ranking', `<p>Na primeira vez que o app tiver <b>300 concursos ou mais</b> e o ranking estiver vazio, ele roda sozinho o teste com o passado (até 1.000 concursos, 10 jogos cada) e usa o resultado como ponto de partida. Isso acontece <b>uma vez só</b>.</p>
+    ${ex('você instala o app e baixa o histórico. Uns segundos depois aparece "✅ Ranking calibrado automaticamente com 1000 concursos", e o ranking já começa com cada estratégia avaliada, sem você precisar apertar nada.')}`) +
+  sec('🔁 Teimosinha', `<p>É repetir a mesma aposta nos próximos concursos, como na Caixa: 3, 6, 9, 12, 18 ou 24 concursos. Escolha antes de tocar em <b>Salvar para apostar</b>.</p>
+    ${ex('você salva 2 jogos com teimosinha de 6, a partir do concurso 3835. O app cria 6 pastas (3835 a 3840), cada uma marcada "🔁 1/6", "🔁 2/6"… O custo é 2 jogos × R$ 3,50 × 6 = R$ 42,00. Cada pasta é conferida quando sai o resultado dela.')}`) +
+  sec('📥 Jogos de fora', `<p>Na aba <b>Jogar → De fora</b>, você cola jogos feitos fora do app (na lotérica, num bolão…), um por linha, e escolhe o concurso.</p>
+    ${ex('você cola "01 02 03 05 08 09 10 12 14 15 18 20 21 23 25" e escolhe o concurso 3830, que já foi sorteado. O app salva e confere na hora: "melhor jogo 11 acertos · prêmio R$ 7,00".')}
+    <p>Linhas com mais ou menos de 15 dezenas são ignoradas, e o app avisa quais.</p>`) +
+  sec('🧾 Limite de gasto', `<p>Em <b>Ajustes</b>, coloque quanto quer gastar por mês (0 = sem limite). Em <b>Jogar</b>, uma barra mostra quanto você já gastou no mês.</p>
+    ${ex('seu limite é R$ 50 e você já salvou R$ 45 em jogos. Se tentar salvar mais 2 jogos (R$ 7), o app avisa "isso passa do seu limite: R$ 52 de R$ 50". Só salva se você tocar de novo.')}
+    <p>A barra fica amarela perto do limite e vermelha quando passa.</p>`) +
+  sec('🩺 Diagnóstico das fontes', `<p>Em <b>Ajustes</b>, mostra se a <b>Caixa</b> e a <b>Comunidade</b> responderam na última tentativa: ✅ ou ❌, quanto tempo levou, qual concurso veio e o erro, se houve.</p>
+    ${ex('aparece "Caixa ❌ · Erro: bloqueado pelo navegador (CORS)" e "Comunidade ✅ · 420 ms · concurso 3834". Quer dizer que a Caixa não deixou o app ler, mas a Comunidade funcionou, e o app usou ela.')}
+    <p>O botão <b>Testar as duas fontes agora</b> chama as duas ao mesmo tempo.</p>`) +
+  sec('📊 Minhas estatísticas', `<p>No cartão <b>Meu placar</b> (aba Jogar), toque em "Minhas estatísticas". Contam só os jogos que você salvou para apostar e que já foram conferidos.</p>
+    ${ex('você já conferiu 100 jogos. O esperado era fazer 11 pontos umas 8,8 vezes, e você fez 10. Sua média foi 9,08, perto dos 9,00 que a sorte dá. Também aparece quanto você gastou e ganhou em cada ano.')}`) +
+  sec('🧮 Conta honesta', `<p>Em cada grupo de jogos gerados, o app mostra a chance real de ganhar <b>pelo menos um prêmio</b> com os jogos marcados, e quanto, em média, volta em prêmios por aposta.</p>
+    ${ex('com 2 jogos marcados, a chance de pelo menos um prêmio é ≈ 20%. Cada aposta de R$ 3,50 devolve, em média, uns R$ 1,30 em prêmios. Ou seja, de cada R$ 3,50, uns R$ 2,20 ficam com a loteria.')}`) +
+  sec('💰 Prêmio real', `<p>Os prêmios de 14 e 15 pontos mudam a cada concurso (dependem de quantas pessoas acertaram). Quando a internet traz o <b>rateio real</b> do concurso, o app guarda e usa esse valor no placar, nas pastas e na simulação.</p>
+    ${ex('no concurso 3834, quem fez 14 pontos ganhou R$ 1.832,40. Se você tinha um jogo com 14 nesse concurso, o app conta R$ 1.832,40, e não a estimativa de R$ 1.500 dos Ajustes.')}
+    <p>Os valores de Ajustes ficam só como reserva, para concursos sem rateio (os importados pela planilha, por exemplo).</p>`) +
   sec('💾 Seus dados e segurança', `<p>Tudo fica guardado <b>só no seu celular</b>, como fotos na galeria. Ninguém mais vê, nem quem usa o mesmo link.</p>
     <p>Mas se você limpar os dados do navegador ou desinstalar o app, perde tudo. Faça backup em <b>Ajustes → Baixar arquivo</b> de vez em quando.</p>
     <p>Só restaure backups que <b>você mesmo</b> fez.</p>`) +
@@ -650,10 +830,10 @@ function vSalvos() {
   for (const r of S.rounds) for (const l of (r.lotes || [])) {
     const sv = l.jogos.filter(j => j.st === 'salvo').map(j => j.m), rs = l.jogos.filter(j => j.st === 'rasc').map(j => j.m);
     if (!sv.length && !rs.length) continue;
-    const pr = gs => r.res ? gs.reduce((a, g) => a + prize(pop(g & r.res)), 0) : 0;
+    const pr = gs => r.res ? gs.reduce((a, g) => a + prize(pop(g & r.res), r.c), 0) : 0;
     pastas.push({ r, l, sv, rs, ganho: pr(sv), teria: pr(rs) });
   }
-  pastas.sort((a, b) => b.l.ts - a.l.ts);
+  pastas.sort((a, b) => b.l.ts - a.l.ts || a.r.c - b.r.c);
   if (!pastas.length) return `<div class="card"><h2>Pastas</h2><p class="mu" style="margin:0">Ainda não tem nada aqui. Cada vez que você gera jogos e salva (ou guarda como rascunho), vira uma pasta com data, hora e concurso.</p></div>`;
   const f = UI.pasta || 'todas', list = pastas.filter(p => f === 'todas' || (f === 'prem' && p.ganho) || (f === 'teria' && p.teria) || (f === 'pend' && !p.r.res));
   const tot = pastas.reduce((a, p) => a + p.ganho, 0), tt = pastas.reduce((a, p) => a + p.teria, 0);
@@ -663,9 +843,11 @@ function vSalvos() {
   return h + list.map(({ r, l, sv, rs, ganho, teria }) => {
     const d = new Date(l.ts), quando = d.toLocaleDateString('pt-BR') + ' às ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const st = !r.res ? `<span class="pill">aguardando</span>` : ganho ? `<span class="pill ok">🏆 ${brl(ganho)}</span>` : teria ? `<span class="pill wn">💡 ${brl(teria)}</span>` : `<span class="pill">sem prêmio</span>`;
-    const jogo = (g, lbl) => { const ht = r.res ? pop(g & r.res) : 0, p = prize(ht); return `<div class="game"><div class="lbl"><span>${lbl}</span>${r.res ? `<span class="${p ? 'pos' : ''}"><b>${ht}</b> acertos${p ? ' · ' + brl(p) : ''}</span>` : ''}</div>${balls(g, r.res || 0)}</div>`; };
-    return `<details class="card folder ${ganho ? 'win' : teria ? 'maybe' : ''}" ${UI.op[l.id] ? 'open' : ''} ontoggle="UI.op[${l.id}]=this.open"><summary class="row sp"><span class="row" style="gap:12px;flex-wrap:nowrap"><span class="fic">${ganho ? '🏆' : teria ? '💡' : '📁'}</span><span><b>Concurso ${r.c}</b> <span class="mu">· ${sv.length + rs.length} jogos</span><br><span class="mu">${quando}</span></span></span>${st}</summary>
+    const jogo = (g, lbl) => { const ht = r.res ? pop(g & r.res) : 0, p = prize(ht, r.c); return `<div class="game"><div class="lbl"><span>${lbl}</span>${r.res ? `<span class="${p ? 'pos' : ''}"><b>${ht}</b> acertos${p ? ' · ' + brl(p) : ''}</span>` : ''}</div>${balls(g, r.res || 0)}</div>`; };
+    return `<details class="card folder ${ganho ? 'win' : teria ? 'maybe' : ''}" ${UI.op[l.id] ? 'open' : ''} ontoggle="UI.op[${l.id}]=this.open"><summary class="row sp"><span class="row" style="gap:12px;flex-wrap:nowrap"><span class="fic">${ganho ? '🏆' : teria ? '💡' : '📁'}</span><span><b>Concurso ${r.c}</b> <span class="mu">· ${sv.length + rs.length} jogos</span>${l.teim ? ` <span class="pill ac">🔁 ${l.teim.i}/${l.teim.n}</span>` : ''}${l.fora ? ` <span class="pill">📥 de fora</span>` : ''}<br><span class="mu">${quando}</span></span></span>${st}</summary>
       <div style="margin-top:10px">${r.res ? `<h3 style="margin-top:0">Sorteadas</h3>${balls(r.res)}` : ''}
+      ${l.teim ? `<div class="note" style="margin:0 0 6px">🔁 Teimosinha ${l.teim.i} de ${l.teim.n}: a mesma aposta vale para ${l.teim.n} concursos seguidos. Custo total da teimosinha: <b>${brl(sv.length * (r.preco || S.cfg.preco) * l.teim.n)}</b>.</div>` : ''}
+      ${r.res && temRateio(r.c) ? `<p class="mu" style="margin:0 0 4px;font-size:12px">💰 Prêmios com o rateio real deste concurso.</p>` : ''}
       ${sv.length ? `<h3>Para apostar (${sv.length} · ${brl(sv.length * (r.preco || S.cfg.preco))})</h3>${sv.map((g, i) => jogo(g, 'Jogo ' + (i + 1))).join('')}` : ''}
       ${rs.length ? `<h3>Rascunhos (${rs.length})</h3>${r.res && teria ? `<div class="note" style="margin:0 0 6px;color:var(--warn)">💡 Se tivesse apostado estes rascunhos, você poderia ter ganho <b>${brl(teria)}</b>.</div>` : r.res ? `<p class="mu" style="margin:0">Os rascunhos não teriam dado prêmio.</p>` : ''}${rs.map((g, i) => jogo(g, 'Rascunho ' + (i + 1))).join('')}` : ''}
       <div class="grid2" style="margin-top:12px"><button class="btn sec sm" onclick="copiar(gameTxt(pastaJogos(${r.id},${l.id})))">Copiar texto</button><button class="btn sm" onclick="compartilhar(${r.id},${l.id})">Compartilhar</button></div>
@@ -681,9 +863,9 @@ function simular(rid, lid) {
   if (!ds.length) return toast('Sem sorteios anteriores para simular');
   const preco = r.preco || S.cfg.preco, masks = ds.map(d => toMask(d.n));
   const jogos = l.jogos.filter(j => j.st !== 'novo').map((j, i) => {
-    const h = [0, 0, 0, 0, 0]; for (const m of masks) { const x = pop(j.m & m); if (x >= 11) h[x - 11]++; }
-    const ganho = h.reduce((a, c, k) => a + c * prize(11 + k), 0), fixo = h.slice(0, 3).reduce((a, c, k) => a + c * prize(11 + k), 0);
-    return { m: j.m, st: j.st, h, ganho, fixo, custo: masks.length * preco };
+    const h = [0, 0, 0, 0, 0]; let ganho = 0;
+    for (let q = 0; q < masks.length; q++) { const x = pop(j.m & masks[q]); if (x >= 11) { h[x - 11]++; ganho += prize(x, ds[q].c); } }
+    return { m: j.m, st: j.st, h, ganho, custo: masks.length * preco };
   }).sort((a, b) => b.ganho - a.ganho);
   UI.sim[lid] = { n: ds.length, de: ds[0].c, ate: ds.at(-1).c, jogos }; UI.op[lid] = true; render();
 }
@@ -696,7 +878,7 @@ function simHTML(r, l) {
     const tg = R.jogos.reduce((a, j) => a + j.ganho, 0), tc = R.jogos.reduce((a, j) => a + j.custo, 0);
     h += `<p class="mu" style="margin:10px 0 4px">Concursos ${R.de} a ${R.ate} (${R.n} sorteios) · gasto ${brl(tc)} · prêmios ${brl(tg)} · <b class="${tg >= tc ? 'pos' : 'neg'}">volta ${pct(tc ? tg / tc : 0)}</b></p>` +
       R.jogos.map((j, i) => `<div class="rk"><div><b>${i + 1}º</b> ${j.st === 'rasc' ? '<span class="pill">rascunho</span>' : ''}<div class="mu">${j.h.map((c, q) => `${11 + q}pts: ${c}`).join(' · ')}</div></div><div style="text-align:right"><b>${brl(j.ganho)}</b><div class="mu">volta ${pct(j.ganho / j.custo)}</div></div><div style="grid-column:1/-1">${balls(j.m)}</div></div>`).join('') +
-      `<div class="note">Em média, qualquer jogo faz 11+ pontos em ~1 a cada 9,4 sorteios. Ter ido bem no passado não aumenta a chance no próximo.</div>`;
+      `<p class="mu" style="font-size:12px">💰 Usa o rateio real de cada concurso quando o app tem; nos outros, os valores de Ajustes.</p><div class="note">Em média, qualquer jogo faz 11+ pontos em ~1 a cada 9,4 sorteios. Ter ido bem no passado não aumenta a chance no próximo.</div>`;
   }
   return h + `</div>`;
 }
@@ -705,7 +887,7 @@ async function compartilhar(id, lid) {
   const W = 1080, top = 230, rowH = 300, H = top + gs.length * rowH + 110, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const x = cv.getContext('2d'), gr = x.createLinearGradient(0, 0, W, H); gr.addColorStop(0, '#1c1430'); gr.addColorStop(1, '#120c1c'); x.fillStyle = gr; x.fillRect(0, 0, W, H);
   x.fillStyle = '#f1ecf8'; x.font = 'bold 64px system-ui'; x.fillText('Lotofácil · Concurso ' + r.c, 60, 110);
-  x.fillStyle = '#a69bbb'; x.font = '36px system-ui'; const pg = gs.reduce((a, g) => a + (r.res ? prize(pop(g & r.res)) : 0), 0); x.fillText(r.res ? `Resultado conferido · ${pg ? 'prêmio ' + brl(pg) : 'sem prêmio'}` : `${gs.length} jogo(s) · ${brl(gs.length * (r.preco || S.cfg.preco))}`, 60, 170);
+  x.fillStyle = '#a69bbb'; x.font = '36px system-ui'; const pg = gs.reduce((a, g) => a + (r.res ? prize(pop(g & r.res), r.c) : 0), 0); x.fillText(r.res ? `Resultado conferido · ${pg ? 'prêmio ' + brl(pg) : 'sem prêmio'}` : `${gs.length} jogo(s) · ${brl(gs.length * (r.preco || S.cfg.preco))}`, 60, 170);
   gs.forEach((g, i) => {
     const y0 = top + i * rowH; x.fillStyle = '#a69bbb'; x.font = '34px system-ui'; x.fillText(`Jogo ${i + 1}` + (r.res ? ` · ${pop(g & r.res)} acertos` : ''), 60, y0 + 40);
     toNums(g).forEach((n, j) => {
@@ -738,7 +920,7 @@ function vResultado() {
   return h;
 }
 function resultadoCard(r) {
-  const rk = STRATS.map(s => { const gs = r.shadow[s.id] || []; return { s, best: gs.length ? Math.max(...gs.map(g => pop(g & r.res))) : 0, pr: gs.reduce((a, g) => a + prize(pop(g & r.res)), 0) }; });
+  const rk = STRATS.map(s => { const gs = r.shadow[s.id] || []; return { s, best: gs.length ? Math.max(...gs.map(g => pop(g & r.res))) : 0, pr: gs.reduce((a, g) => a + prize(pop(g & r.res), r.c), 0) }; });
   return `<div class="card"><div class="row sp"><h2 style="margin:0">Concurso ${r.c}</h2><span class="pill ${r.premio ? 'ok' : ''}">${r.premio ? brl(r.premio) : 'sem prêmio'}</span></div>
     <h3>Sorteadas</h3>${balls(r.res)}
     <h3>Seus jogos</h3>${r.mine.map((g, i) => `<div class="game"><div class="lbl"><span>Jogo ${i + 1}</span><span><b>${r.hits[i]}</b> acertos</span></div>${balls(g, r.res)}</div>`).join('')}
@@ -757,7 +939,7 @@ function rankList(sc, unit) {
 }
 function vRanking() {
   const tot = STRATS.reduce((a, s) => a + (S.score[s.id]?.j || 0), 0);
-  let h = `<div class="card"><h2>Ranking ao vivo</h2><p class="mu" style="margin-top:0">A cada resultado, o app confere os jogos de <b>todas</b> as estratégias (mesmo as que você não apostou). Quem lidera gera seus próximos jogos.</p>
+  let h = `<div class="card"><h2>Ranking ao vivo</h2>${S.calib ? `<p class="pos" style="margin:0 0 8px;font-size:14px">✅ Calibrado automaticamente com ${S.calib.n} concursos</p>` : ''}${UI.bt && !S.calib ? `<p class="mu" style="margin:0 0 8px">⏳ Calibrando automaticamente…</p>` : ''}<p class="mu" style="margin-top:0">A cada resultado, o app confere os jogos de <b>todas</b> as estratégias (mesmo as que você não apostou). Quem lidera gera seus próximos jogos.</p>
     ${tot ? rankList(S.score, true) : '<p class="mu">Ainda sem dados. Confira um resultado ou rode o teste abaixo e use-o como ponto de partida.</p>'}
     <div class="note">“Volta por R$1”: quanto voltou em prêmios para cada real apostado. 100% = empate. O líder é quem tem a maior <b>média de acertos por jogo</b>. Todo jogo conta, de 0 a 15 pontos. A média esperada de qualquer jogo é 9,0.</div></div>`;
   h += `<div class="card"><h2>Teste com sorteios passados</h2><p class="mu" style="margin-top:0">Simula cada estratégia nos últimos concursos usando só o que se sabia antes de cada sorteio.</p>
@@ -792,6 +974,7 @@ function vAjustes() {
   const c = S.cfg, last = S.draws.at(-1);
   return `<div class="card"><h2>Resultados automáticos</h2><p class="mu" style="margin-top:0">O app busca o último resultado na internet sempre que você abre, confere suas pastas e mostra a data do próximo sorteio.</p>
     <p class="mu">${syncTxt()}</p><div class="grid2"><button class="btn" onclick="sincronizar(true)">Buscar agora</button><button class="btn sec" onclick="baixarHistorico()">Baixar histórico completo</button></div></div>
+  ${diagCard()}
   <div class="card"><h2>Sorteios</h2><p class="mu" style="margin-top:0">${S.draws.length ? `${S.draws.length} concursos carregados · último: <b>#${last.c}</b>` : 'Nenhum sorteio carregado.'}</p>
     <label class="btn" style="display:block;text-align:center">Importar planilha (.xlsx, .csv, .htm)<input type="file" accept=".xlsx,.xls,.csv,.txt,.htm,.html,.json" hidden onchange="this.files[0]&&importFile(this.files[0]);this.value=''"></label>
     <label class="f">Ou cole os resultados (uma linha por concurso: número + 15 dezenas)</label><textarea id="pasteD" placeholder="3850 01 02 04 05 …"></textarea>
@@ -802,8 +985,9 @@ function vAjustes() {
     <div><label class="f">Preço da aposta</label><input type="number" step="0.5" value="${c.preco}" onchange="setC('preco',this.value)"></div>
     <div><label class="f">Janela "recentes"</label><input type="number" min="5" max="200" value="${c.janela}" onchange="setC('janela',this.value)"></div>
     <div><label class="f">Dezenas da previsão por jogo</label><input type="number" min="10" max="14" value="${c.prevFix}" onchange="setC('prevFix',Math.min(14,Math.max(10,+this.value||13)))"></div>
-    <div><label class="f">Custo por concurso</label><input disabled value="${brl(c.jogos * c.preco)}"></div></div>
-    <h3>Prêmios (11–13 fixos, 14–15 estimados)</h3><div class="grid2">
+    <div><label class="f">Custo por concurso</label><input disabled value="${brl(c.jogos * c.preco)}"></div>
+    <div><label class="f">Limite por mês (0 = sem)</label><input type="number" min="0" step="10" inputmode="decimal" value="${c.limite || 0}" onchange="setC('limite',this.value)"></div></div>
+    <h3>Prêmios de reserva</h3><p class="mu" style="margin:0 0 4px;font-size:12.5px">Quando a API traz o rateio real de um concurso, o app usa o valor real. Estes valores só são usados quando não há rateio.</p><div class="grid2">
     ${[11, 12, 13, 14, 15].map(k => `<div><label class="f">${k} acertos</label><input type="number" value="${c['p' + k]}" onchange="setC('p${k}',this.value)"></div>`).join('')}</div></div>
   <div class="card"><h2>Backup</h2><p class="mu" style="margin-top:0">Os dados ficam só neste celular. Faça backup de vez em quando.</p>
     <div class="grid2"><button class="btn sec" onclick="copiar(JSON.stringify(S))">Copiar backup</button><button class="btn sec" onclick="baixar()">Baixar arquivo</button></div>
@@ -812,18 +996,19 @@ function vAjustes() {
   <div class="card"><h2>Zerar</h2><div class="grid2"><button class="btn danger" onclick="zerar('placar')">Zerar ranking</button><button class="btn danger" onclick="zerar('tudo')">Apagar tudo</button></div><p class="mu" id="zmsg"></p></div>
   <p class="mu" style="text-align:center">Uso pessoal. Loteria é sorte: nenhum método muda a chance de cada jogo.</p>`;
 }
-function setC(k, v) { S.cfg[k] = Math.max(k === 'preco' ? 0 : 1, +v || 0); save(); render(); }
+function setC(k, v) { S.cfg[k] = Math.max(k === 'preco' || k === 'limite' ? 0 : 1, +v || 0); save(); render(); }
 function importText() { const d = rowsToDraws(textRows($('#pasteD').value)); if (!d.length) return toast('Não achei sorteios no texto'); const r = mergeDraws(d); toast(`${r.add} concursos novos`); render(); }
 function baixar() { try { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(S)], { type: 'application/json' })); a.download = 'lotolab-backup-' + new Date().toISOString().slice(0, 10) + '.json'; a.click(); } catch (e) { toast('Use "Copiar backup"'); } }
-function restore(t) { try { if (String(t).length > 20e6) throw 0; const o = JSON.parse(t); if (!o || !Array.isArray(o.draws)) throw 0; S = limpa(o); migra(); _Hn = -1; save(); toast('Backup restaurado'); render(); } catch (e) { toast('Backup inválido'); } }
+function restore(t) { try { if (String(t).length > 20e6) throw 0; const o = JSON.parse(t); if (!o || !Array.isArray(o.draws)) throw 0; S = limpa(o); migra(); _Hn = -1; _DMv++; save(); toast('Backup restaurado'); render(); } catch (e) { toast('Backup inválido'); } }
 let zConf = null;
 function zerar(o) {
   if (zConf !== o) { zConf = o; $('#zmsg').textContent = 'Toque de novo para confirmar.'; return; }
-  zConf = null; if (o === 'tudo') S = DEF(); else { S.score = {}; S.bt = null; } _Hn = -1; save(); toast('Feito'); render();
+  zConf = null; if (o === 'tudo') S = DEF(); else { S.score = {}; S.bt = null; } _Hn = -1; _DMv++; save(); toast('Feito'); render();
 }
 
 function render() {
   try { atualizaPrevisoes(); } catch (e) {}
+  try { garanteSombras(); } catch (e) {}
   nav();
   $('#hdr').innerHTML = S.draws.length ? `último #${S.draws.at(-1).c}` : '';
   $('#app').innerHTML = ({ ajuda: vAjuda, jogar: vJogar, salvos: vSalvos, resultado: vResultado, ranking: vRanking, numeros: vNumeros, ajustes: vAjustes })[UI.tab]();
@@ -831,6 +1016,7 @@ function render() {
 try { history.replaceState({ n: 0 }, '', '#jogar'); } catch (e) {}
 render();
 sincronizar(false);
+setTimeout(calibrar, 800);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') sincronizar(false); });
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
