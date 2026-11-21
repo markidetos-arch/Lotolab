@@ -96,6 +96,11 @@ nav button{font-size:10.5px}
 .pill.wn{background:rgba(255,184,77,.15);color:var(--warn);border-color:rgba(255,184,77,.4)}
 .folder.maybe{border-color:rgba(255,184,77,.4)}
 .lote{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.help{margin-left:8px;width:30px;height:30px;border-radius:50%;border:1px solid var(--line);background:var(--card2);color:var(--tx);font:700 15px system-ui;flex:none}
+.simbox{margin-top:14px;padding:12px;border-radius:14px;background:var(--card2)}
+.simbox .rk{border-top-color:#3a2f55}
+.ajuda p,.ajuda li{font-size:14px;color:#ddd5ea}
+.ajuda ul{padding-left:18px}
 .lnk{background:none;border:0;color:#ff9ab5;font:600 12px system-ui;padding:0}
 </style>
 </head>
@@ -103,7 +108,7 @@ nav button{font-size:10.5px}
 <header>
   <img src="icon-192.png" alt="">
   <h1>Lotofácil Lab</h1>
-  <div class="sub" id="hdr"></div>
+  <div class="sub" id="hdr"></div><button class="help" onclick="go('ajuda')" aria-label="Como funciona">?</button>
 </header>
 <main id="app"></main>
 <nav id="nav"></nav>
@@ -411,7 +416,7 @@ async function backtest(K, k) {
 }
 
 /* ================= interface ================= */
-const UI = { tab: 'jogar', sel: new Set(), ultimo: null, numJ: 'todos', bt: null };
+const UI = { op: {}, sim: {}, tab: 'jogar', sel: new Set(), ultimo: null, numJ: 'todos', bt: null };
 const ICONS = {
   jogar: '<path d="M12 3l2.6 5.6 6.1.6-4.6 4.1 1.3 6-5.4-3.1-5.4 3.1 1.3-6L3.3 9.2l6.1-.6z"/>',
   salvos: '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
@@ -457,6 +462,24 @@ function vJogar() {
     <p class="mu" style="margin:10px 0 0">${p.n} concurso(s) apostado(s) · premiado em ${p.prem}</p></div>`;
   return h;
 }
+
+function vAjuda() {
+  const sec = (t, b, open) => `<details class="card" ${open ? 'open' : ''}><summary><h2 style="margin:0">${t}</h2></summary><div class="ajuda">${b}</div></details>`;
+  return `<div class="card"><h2>Como o app funciona</h2><p class="mu" style="margin:0">Toque em cada tópico para abrir. Para voltar, use as abas lá embaixo.</p></div>` +
+  sec('🔁 O dia a dia', `<ol class="steps"><li><b>Jogar:</b> escolha quantos jogos quer e toque em Gerar.</li><li>Marque os jogos e toque em <b>Salvar para apostar</b>, ou guarde como <b>rascunho</b>.</li><li>Copie ou compartilhe a imagem e faça a aposta.</li><li>Depois do sorteio, o app busca o resultado sozinho e confere tudo. Se não conseguir, digite na aba <b>Resultado</b>.</li></ol>`, true) +
+  sec('🧠 As 5 estratégias', STRATS.map(s => `<p><b>${s.nome}</b><br>${s.desc}</p>`).join('') + `<p>Os <b>filtros de padrão</b> descartam jogos fora do que acontece em 80% dos sorteios: quantidade de pares, soma das dezenas, números da moldura, primos e repetidos do concurso anterior.</p>`) +
+  sec('🏆 Ranking ao vivo: como ele escolhe seus jogos', `<p><b>Quando você toca em Gerar</b>, o app calcula uma nota para cada estratégia:</p><ul><li>quanto ela ganhou em prêmios fixos (11 a 13 pontos) por jogo;</li><li>mais um <b>freio</b>: soma 300 jogos imaginários com a média de todas as estratégias. Quem tem poucos jogos fica perto da média, e só passa na frente quem mantém a vantagem por bastante tempo.</li></ul>
+    <p>A estratégia com a <b>maior nota é a líder</b>, e todos os seus jogos daquele momento saem dela.</p>
+    <p><b>Na primeira vez que você gera para um concurso</b>, cada estratégia também gera seus jogos "sombra", que você não vê. Quando chega o resultado, o app confere os jogos sombra de todas e soma no ranking. Por isso ele anda mesmo para as estratégias que você não usou.</p>
+    <p>No concurso seguinte, se outra estratégia passou na frente, ela vira a líder. O ajuste é na <b>escolha da estratégia</b>, não nos números dentro de cada uma.</p>
+    <p>14 e 15 pontos não entram na escolha do líder: são raros demais e um acerto por sorte distorceria tudo.</p>`) +
+  sec('⏪ Teste com sorteios passados', `<p>Funciona como uma <b>máquina do tempo</b>:</p><ol class="steps"><li>O app separa os últimos N concursos e começa como se estivesse no dia anterior ao primeiro, enxergando só o histórico até ali.</li><li>Cada estratégia gera seus jogos, como faria hoje.</li><li>Ele confere com o resultado real daquele concurso e anota acertos e prêmios.</li><li>Só então o sorteio entra no histórico, e o app avança para o próximo concurso.</li></ol>
+    <p>Nenhuma estratégia "cola": a de atrasados, por exemplo, só sabe o que estava atrasado naquele momento.</p><p>"Usar como ponto de partida" transforma esse resultado no ranking inicial.</p>`) +
+  sec('📁 Pastas, rascunhos e simulação', `<ul><li>Cada vez que você gera e salva, vira uma <b>pasta</b> com concurso, data e hora.</li><li><b>Salvos para apostar</b> contam no gasto e no placar. <b>Rascunhos</b> não contam, mas são conferidos: a pasta mostra 💡 "você poderia ter ganho R$ X".</li><li>🏆 na capa = seus jogos salvos ganharam.</li><li><b>Simular no passado:</b> dentro da pasta, confere aqueles jogos contra os sorteios anteriores ao concurso (últimos 100, 300, 1000 ou todos) e mostra um ranking de quanto cada um teria ganhado.</li></ul>`) +
+  sec('🌐 Resultados automáticos', `<p>Sempre que você abre o app, ele busca o último resultado na internet: primeiro na API da Caixa e, se falhar, numa API gratuita da comunidade. Se achar concurso novo, adiciona ao histórico, confere suas pastas e mostra a data do próximo sorteio. Se ficar dias sem abrir, ele busca até os 30 últimos concursos que faltarem.</p><p>Se as duas fontes falharem, digite o resultado na aba <b>Resultado</b> ou importe a planilha da Caixa em Ajustes.</p>`) +
+  sec('💾 Seus dados', `<p>Tudo fica salvo <b>só neste celular</b>. Ninguém mais vê, nem quem usa o mesmo link. Se limpar os dados do navegador ou desinstalar o app, perde tudo, então faça backup em <b>Ajustes → Baixar arquivo</b> de vez em quando.</p>`) +
+  sec('⚠️ O aviso honesto', `<p>Cada sorteio é aleatório e não tem memória. Nenhuma estratégia, ranking ou simulação muda a chance de um jogo: cerca de 1 em 9,4 de fazer 11 pontos ou mais, e 1 em 3.268.760 de fazer 15. O app serve para organizar, conferir e mostrar com números reais como cada critério se sai. Fique de olho no <b>Aleatório puro</b> no ranking.</p>`);
+}
 function vSalvos() {
   const pastas = [];
   for (const r of S.rounds) for (const l of (r.lotes || [])) {
@@ -476,15 +499,42 @@ function vSalvos() {
     const d = new Date(l.ts), quando = d.toLocaleDateString('pt-BR') + ' às ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const st = !r.res ? `<span class="pill">aguardando</span>` : ganho ? `<span class="pill ok">🏆 ${brl(ganho)}</span>` : teria ? `<span class="pill wn">💡 ${brl(teria)}</span>` : `<span class="pill">sem prêmio</span>`;
     const jogo = (g, lbl) => { const ht = r.res ? pop(g & r.res) : 0, p = prize(ht); return `<div class="game"><div class="lbl"><span>${lbl}</span>${r.res ? `<span class="${p ? 'pos' : ''}"><b>${ht}</b> acertos${p ? ' · ' + brl(p) : ''}</span>` : ''}</div>${balls(g, r.res || 0)}</div>`; };
-    return `<details class="card folder ${ganho ? 'win' : teria ? 'maybe' : ''}"><summary class="row sp"><span class="row" style="gap:12px;flex-wrap:nowrap"><span class="fic">${ganho ? '🏆' : teria ? '💡' : '📁'}</span><span><b>Concurso ${r.c}</b> <span class="mu">· ${sv.length + rs.length} jogos</span><br><span class="mu">${quando}</span></span></span>${st}</summary>
+    return `<details class="card folder ${ganho ? 'win' : teria ? 'maybe' : ''}" ${UI.op[l.id] ? 'open' : ''} ontoggle="UI.op[${l.id}]=this.open"><summary class="row sp"><span class="row" style="gap:12px;flex-wrap:nowrap"><span class="fic">${ganho ? '🏆' : teria ? '💡' : '📁'}</span><span><b>Concurso ${r.c}</b> <span class="mu">· ${sv.length + rs.length} jogos</span><br><span class="mu">${quando}</span></span></span>${st}</summary>
       <div style="margin-top:10px">${r.res ? `<h3 style="margin-top:0">Sorteadas</h3>${balls(r.res)}` : ''}
       ${sv.length ? `<h3>Para apostar (${sv.length} · ${brl(sv.length * (r.preco || S.cfg.preco))})</h3>${sv.map((g, i) => jogo(g, 'Jogo ' + (i + 1))).join('')}` : ''}
       ${rs.length ? `<h3>Rascunhos (${rs.length})</h3>${r.res && teria ? `<div class="note" style="margin:0 0 6px;color:var(--warn)">💡 Se tivesse apostado estes rascunhos, você poderia ter ganho <b>${brl(teria)}</b>.</div>` : r.res ? `<p class="mu" style="margin:0">Os rascunhos não teriam dado prêmio.</p>` : ''}${rs.map((g, i) => jogo(g, 'Rascunho ' + (i + 1))).join('')}` : ''}
       <div class="grid2" style="margin-top:12px"><button class="btn sec sm" onclick="copiar(gameTxt(pastaJogos(${r.id},${l.id})))">Copiar texto</button><button class="btn sm" onclick="compartilhar(${r.id},${l.id})">Compartilhar</button></div>
+      ${simHTML(r, l)}
       <div style="margin-top:8px;text-align:center"><button class="lnk" onclick="apagarPasta(${r.id},${l.id})">Apagar pasta</button></div></div></details>`;
   }).join('');
 }
 const pastaJogos = (rid, lid) => { const [, l] = findL(rid, lid), sv = l.jogos.filter(j => j.st === 'salvo'); return (sv.length ? sv : l.jogos).map(j => j.m); };
+
+/* ================= simular jogos da pasta no passado ================= */
+function simular(rid, lid) {
+  const [r, l] = findL(rid, lid), K = UI.simK || 300, past = S.draws.filter(d => d.c < r.c), ds = K === 'todos' ? past : past.slice(-K);
+  if (!ds.length) return toast('Sem sorteios anteriores para simular');
+  const preco = r.preco || S.cfg.preco, masks = ds.map(d => toMask(d.n));
+  const jogos = l.jogos.filter(j => j.st !== 'novo').map((j, i) => {
+    const h = [0, 0, 0, 0, 0]; for (const m of masks) { const x = pop(j.m & m); if (x >= 11) h[x - 11]++; }
+    const ganho = h.reduce((a, c, k) => a + c * prize(11 + k), 0), fixo = h.slice(0, 3).reduce((a, c, k) => a + c * prize(11 + k), 0);
+    return { m: j.m, st: j.st, h, ganho, fixo, custo: masks.length * preco };
+  }).sort((a, b) => b.ganho - a.ganho);
+  UI.sim[lid] = { n: ds.length, de: ds[0].c, ate: ds.at(-1).c, jogos }; UI.op[lid] = true; render();
+}
+function simHTML(r, l) {
+  const k = UI.simK || 300, R = UI.sim[l.id];
+  let h = `<div class="simbox"><div class="row sp" style="flex-wrap:nowrap"><b>📊 Simular no passado</b><select style="width:auto;padding:6px 8px;font-size:13px" onchange="UI.simK=this.value==='todos'?'todos':+this.value">${[100, 300, 1000, 'todos'].map(v => `<option value="${v}" ${String(v) === String(k) ? 'selected' : ''}>${v === 'todos' ? 'todos' : 'últimos ' + v}</option>`).join('')}</select></div>
+    <p class="mu" style="margin:6px 0 8px">Confere estes jogos contra sorteios anteriores ao concurso ${r.c}, como se você tivesse jogado eles em todos.</p>
+    <button class="btn sec sm" style="width:100%" onclick="simular(${r.id},${l.id})">Simular</button>`;
+  if (R) {
+    const tg = R.jogos.reduce((a, j) => a + j.ganho, 0), tc = R.jogos.reduce((a, j) => a + j.custo, 0);
+    h += `<p class="mu" style="margin:10px 0 4px">Concursos ${R.de} a ${R.ate} (${R.n} sorteios) · gasto ${brl(tc)} · prêmios ${brl(tg)} · <b class="${tg >= tc ? 'pos' : 'neg'}">volta ${pct(tc ? tg / tc : 0)}</b></p>` +
+      R.jogos.map((j, i) => `<div class="rk"><div><b>${i + 1}º</b> ${j.st === 'rasc' ? '<span class="pill">rascunho</span>' : ''}<div class="mu">${j.h.map((c, q) => `${11 + q}pts: ${c}`).join(' · ')}</div></div><div style="text-align:right"><b>${brl(j.ganho)}</b><div class="mu">volta ${pct(j.ganho / j.custo)}</div></div><div style="grid-column:1/-1">${balls(j.m)}</div></div>`).join('') +
+      `<div class="note">Em média, qualquer jogo faz 11+ pontos em ~1 a cada 9,4 sorteios. Ter ido bem no passado não aumenta a chance no próximo.</div>`;
+  }
+  return h + `</div>`;
+}
 async function compartilhar(id, lid) {
   const r = S.rounds.find(x => x.id === id), gs = lid ? pastaJogos(id, lid) : r.mine; if (!gs.length) return toast('Nenhum jogo para compartilhar');
   const W = 1080, top = 230, rowH = 300, H = top + gs.length * rowH + 110, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
@@ -606,7 +656,7 @@ function zerar(o) {
 function render() {
   nav();
   $('#hdr').innerHTML = S.draws.length ? `último #${S.draws.at(-1).c}` : '';
-  $('#app').innerHTML = ({ jogar: vJogar, salvos: vSalvos, resultado: vResultado, ranking: vRanking, numeros: vNumeros, ajustes: vAjustes })[UI.tab]();
+  $('#app').innerHTML = ({ ajuda: vAjuda, jogar: vJogar, salvos: vSalvos, resultado: vResultado, ranking: vRanking, numeros: vNumeros, ajustes: vAjustes })[UI.tab]();
 }
 render();
 sincronizar(false);
