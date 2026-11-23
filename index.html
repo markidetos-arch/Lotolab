@@ -115,6 +115,7 @@ nav button{font-size:10.5px}
 .tb{width:100%;border-collapse:collapse;margin-top:12px;font-size:13.5px}
 .tb th{color:var(--mu);font-weight:600;text-align:left;padding:5px 4px;border-bottom:1px solid var(--line)}
 .tb td{padding:5px 4px;border-bottom:1px solid #2a2140}
+.ultcard{border-color:rgba(61,220,151,.35)}
 .lnk{background:none;border:0;color:#ff9ab5;font:600 12px system-ui;padding:0}
 </style>
 </head>
@@ -907,8 +908,9 @@ async function compartilhar(id, lid) {
 function vResultado() {
   const pend = S.rounds.filter(r => !r.res).sort((a, b) => a.c - b.c)[0];
   const cDef = UI.cIn || (pend ? pend.c : (S.draws.at(-1)?.c || 0) + 1);
-  let h = `<div class="card"><div class="row sp" style="flex-wrap:nowrap"><span class="mu">${syncTxt()}</span><button class="btn sm" onclick="sincronizar(true)">Buscar resultado</button></div></div>` + prevCard();
-  if (UI.ultimo) { const r = S.rounds.find(x => x.id === UI.ultimo); if (r) h += resultadoCard(r); }
+  let h = `<div class="card"><div class="row sp" style="flex-wrap:nowrap"><span class="mu">${syncTxt()}</span><button class="btn sm" onclick="sincronizar(true)">Buscar resultado</button></div></div>` + ultimoCard();
+  if (UI.ultimo) { const r = S.rounds.find(x => x.id === UI.ultimo); if (r && r.c !== S.draws.at(-1)?.c) h += resultadoCard(r); }
+  h += prevCard();
   h += `<div class="card"><h2>Digitar resultado</h2>
     <label class="f">Concurso</label><input type="number" inputmode="numeric" value="${cDef}" oninput="UI.cIn=+this.value">
     <label class="f">Toque nas 15 dezenas sorteadas (${UI.sel.size}/15)</label>
@@ -918,6 +920,20 @@ function vResultado() {
     <button class="btn" ${UI.sel.size === 15 ? '' : 'disabled'} onclick="conferir(+(UI.cIn||${cDef}),[...UI.sel]);UI.cIn=null">Conferir</button></div>
     ${pend ? `<p class="mu" style="margin:10px 0 0">Jogos esperando resultado: concurso ${pend.c}.</p>` : ''}</div>`;
   return h;
+}
+// último resultado conhecido (vindo da internet, da planilha ou digitado), com rateio e como foram seus jogos
+function ultimoCard() {
+  const d = S.draws.at(-1); if (!d) return '';
+  const m = toMask(d.n), r = S.rounds.find(x => x.c === d.c && x.res), sv = r ? r.mine : [];
+  const rs = r ? r.lotes.flatMap(l => l.jogos.filter(j => j.st === 'rasc').map(j => j.m)) : [], teria = rs.reduce((a, g) => a + prize(pop(g & m), d.c), 0);
+  const fx = [15, 14, 13, 12, 11];
+  return `<div class="card ultcard"><div class="row sp"><h2 style="margin:0">🎱 Último resultado</h2><span class="pill ac">#${d.c}</span></div>
+    <p class="mu" style="margin:6px 0 10px">Concurso ${d.c}${d.d ? ` · sorteado em ${esc(d.d)}` : ''}</p>
+    ${balls(m)}
+    ${d.p ? `<details style="margin-top:12px"><summary class="mu">▸ 💰 Rateio deste concurso</summary><table class="tb">${fx.map(k => `<tr><td>${k} acertos</td><td style="text-align:right"><b>${d.p[k] > 0 ? brl(d.p[k]) : k === 15 ? 'acumulou' : '–'}</b></td></tr>`).join('')}</table></details>` : ''}
+    <h3>Seus jogos</h3>${sv.length ? `<div class="row sp"><span>${sv.length} jogo(s) · melhor: <b>${Math.max(...r.hits)} acertos</b></span><span class="pill ${r.premio ? 'ok' : ''}">${r.premio ? '🏆 ' + brl(r.premio) : 'sem prêmio'}</span></div>` : `<p class="mu" style="margin:0">Você não tinha jogos salvos para este concurso.</p>`}
+    ${teria ? `<p style="margin:8px 0 0;color:var(--warn);font-size:14px">💡 Seus rascunhos teriam ganho ${brl(teria)}.</p>` : ''}
+    ${r && (sv.length || rs.length) ? `<button class="btn sec sm" style="margin-top:12px" onclick="UI.pasta='todas';go('salvos')">Ver pastas</button>` : ''}</div>`;
 }
 function resultadoCard(r) {
   const rk = STRATS.map(s => { const gs = r.shadow[s.id] || []; return { s, best: gs.length ? Math.max(...gs.map(g => pop(g & r.res))) : 0, pr: gs.reduce((a, g) => a + prize(pop(g & r.res), r.c), 0) }; });
