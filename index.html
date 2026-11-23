@@ -146,7 +146,8 @@ function toast(t, ms = 2200) { const e = $('#toast'); e.textContent = t; e.class
 
 /* ================= estado ================= */
 const KEY = 'lotolab-v1';
-const DEF = () => ({ draws: [], rounds: [], score: {}, bt: null, prevs: [], cfg: { jogos: 2, preco: 3.5, p11: 7, p12: 14, p13: 35, p14: 1500, p15: 1500000, janela: 20, prevFix: 13, limite: 0 } });
+const VERSAO = 21; // acompanha o cache do sw.js (lotolab-v19)
+const DEF = () => ({ draws: [], rounds: [], score: {}, bt: null, prevs: [], cfg: { jogos: 2, preco: 3.5, p11: 7, p12: 14, p13: 35, p14: 1500, p15: 1500000, janela: 20, prevFix: 13, limite: 0, fecha: 20, fechaDom: 10 } });
 const okData = v => typeof v === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(v) ? v : null;
 const esc = v => String(v ?? '').replace(/[&<>"'`]/g, ch => '&#' + ch.charCodeAt(0) + ';');
 // Valida tudo que vem do armazenamento ou de um backup: só números, ids conhecidos e datas no formato dd/mm/aaaa
@@ -159,9 +160,9 @@ function limpa(o) {
   const sc = x => obj(x) ? { j: Math.max(0, I(x.j)), h: [0, 1, 2, 3, 4].map(i => Math.max(0, I(arr(x.h)[i]))), s: Math.max(0, I(x.s)), js: Math.max(0, I(x.js)) } : null;
   const scs = x => { const r = {}; if (obj(x)) for (const k of IDS) { const v = sc(x[k]); if (v) r[k] = v; } return r; };
   if (obj(o.cfg)) for (const k in out.cfg) if (k in o.cfg) out.cfg[k] = Math.max(0, N(o.cfg[k], out.cfg[k]));
-  out.cfg.jogos = Math.min(200, Math.max(1, Math.trunc(out.cfg.jogos))); out.cfg.janela = Math.min(500, Math.max(5, Math.trunc(out.cfg.janela))); out.cfg.prevFix = Math.min(14, Math.max(10, Math.trunc(out.cfg.prevFix)));
+  out.cfg.jogos = Math.min(200, Math.max(1, Math.trunc(out.cfg.jogos))); out.cfg.janela = Math.min(500, Math.max(5, Math.trunc(out.cfg.janela))); out.cfg.prevFix = Math.min(14, Math.max(10, Math.trunc(out.cfg.prevFix))); out.cfg.fecha = Math.min(23, Math.max(0, Math.trunc(out.cfg.fecha))); out.cfg.fechaDom = Math.min(23, Math.max(0, Math.trunc(out.cfg.fechaDom)));
   const limpaP = x => { if (!obj(x)) return undefined; const r = {}; for (let k = 11; k <= 15; k++) if (x[k] != null) { const v = N(x[k], -1); if (v >= 0 && v < 1e10) r[k] = Math.round(v * 100) / 100; } return Object.keys(r).length ? r : undefined; };
-  out.draws = arr(o.draws).filter(obj).map(d => ({ c: I(d.c), n: arr(d.n).map(x => I(x)).filter(x => x >= 1 && x <= 25), d: okData(d.d), p: limpaP(d.p) }))
+  out.draws = arr(o.draws).filter(obj).map(d => ({ c: I(d.c), n: arr(d.n).map(x => I(x)).filter(x => x >= 1 && x <= 25), d: okData(d.d), p: limpaP(d.p), o: d.o ? true : undefined, corr: d.corr ? true : undefined }))
     .filter(d => d.c > 0 && d.n.length === 15 && new Set(d.n).size === 15).map(d => (d.n.sort((a, b) => a - b), d));
   out.rounds = arr(o.rounds).filter(obj).map(r => {
     const st = sid(r.strat), shadow = {}; if (obj(r.shadow)) for (const k of IDS) if (Array.isArray(r.shadow[k])) shadow[k] = r.shadow[k].map(mask).filter(Boolean);
@@ -263,6 +264,7 @@ function gerar(h, sid, k, excl = [], sc = S.score) {
 /* ================= placar das estratégias ================= */
 // j = jogos; h = quantos fizeram 11..15; s = soma de todos os acertos; js = jogos com soma registrada
 const emptySc = () => ({ j: 0, h: [0, 0, 0, 0, 0], s: 0, js: 0 });
+function des(sc, hits) { sc.j = Math.max(0, sc.j - 1); sc.s = Math.max(0, (sc.s || 0) - hits); sc.js = Math.max(0, (sc.js || 0) - 1); if (hits >= 11) sc.h[hits - 11] = Math.max(0, sc.h[hits - 11] - 1); }
 function acc(sc, hits) { sc.j++; sc.s = (sc.s || 0) + hits; sc.js = (sc.js || 0) + 1; if (hits >= 11) sc.h[hits - 11]++; }
 const media = sc => sc.js ? sc.s / sc.js : 0;
 const retOf = sc => sc.h.reduce((a, c, i) => a + c * prize(11 + i), 0);
@@ -345,20 +347,37 @@ function rowsToDraws(rows) {
   }
   return out;
 }
-function mergeDraws(list) {
+// oficial = veio da API. Só o oficial pode corrigir dezenas já salvas (a planilha não corrige)
+function mergeDraws(list, oficial) {
   let next = (S.draws.at(-1)?.c || 0) + 1, add = 0;
   const have = new Map(S.draws.map(d => [d.c, d]));
-  const comP = new Set();
+  const comP = new Set(), corrigidos = [];
   for (const d of list) {
     if (d.c == null) d.c = next++;
-    if (!have.has(d.c)) { have.set(d.c, d); add++; if (d.p) comP.add(d.c); }
-    else if (d.p && !have.get(d.c).p) { have.get(d.c).p = d.p; comP.add(d.c); }
+    if (oficial) d.o = true;
+    if (!have.has(d.c)) { have.set(d.c, d); add++; if (d.p) comP.add(d.c); continue; }
+    const x = have.get(d.c);
+    if (oficial && toMask(d.n) !== toMask(x.n)) { corrigidos.push({ c: d.c, antes: toMask(x.n), m: toMask(d.n) }); x.n = d.n.slice(); x.corr = true; comP.add(d.c); }
+    if (oficial) { x.o = true; if (d.d && !x.d) x.d = d.d; }
+    if (d.p && (!x.p || (oficial && corrigidos.some(k => k.c === d.c)))) { x.p = d.p; comP.add(d.c); }
   }
-  S.draws = [...have.values()].sort((a, b) => a.c - b.c); _DMv++;
+  S.draws = [...have.values()].sort((a, b) => a.c - b.c); _DMv++; if (corrigidos.length) _Hn = -1;
+  for (const k of corrigidos) reconfere(k.c, k.antes, k.m);
   for (const r of S.rounds) if (r.res && comP.has(r.c)) recalc(r);
   // confere rodadas pendentes que agora têm resultado
   let conf = 0; for (const r of S.rounds) if (!r.res) { const d = have.get(r.c); if (d) { aplicaResultado(r, toMask(d.n)); conf++; } }
-  save(); setTimeout(calibrar, 300); return { add, conf };
+  save(); setTimeout(calibrar, 300);
+  if (corrigidos.length) toast(corrigidos.map(k => `⚠️ O resultado do concurso ${k.c} estava diferente do oficial e foi corrigido`).join(' · '), 7000);
+  return { add, conf, corrigidos: corrigidos.length };
+}
+// troca o resultado de um concurso já conferido: tira do placar os acertos antigos dos jogos sombra e soma os novos (o número de jogos não muda)
+function reconfere(c, antes, m) {
+  for (const r of S.rounds) if (r.c === c && r.res) {
+    for (const sid in r.shadow) { const sc = S.score[sid]; if (!sc) continue; for (const g of r.shadow[sid]) { des(sc, pop(g & antes)); acc(sc, pop(g & m)); } }
+    r.res = m; recalc(r);
+  }
+  for (const p of (S.prevs || [])) if (p.c === c && p.hits != null) p.hits = pop(p.m & m);
+  UI.sim = {};
 }
 async function importFile(f) {
   try {
@@ -369,7 +388,7 @@ async function importFile(f) {
     const rows = txt === null ? await xlsxRows(buf) : textRows(txt);
     const d = rowsToDraws(rows);
     if (!d.length) return toast('Não achei sorteios nesse arquivo');
-    const r = mergeDraws(d); toast(`${r.add} concursos novos` + (r.conf ? ` · ${r.conf} rodada(s) conferida(s)` : '')); render();
+    const r = mergeDraws(d); abreRodada(); toast(`${r.add} concursos novos` + (r.conf ? ` · ${r.conf} rodada(s) conferida(s)` : '')); render();
   } catch (e) { console.error(e); toast('Não consegui ler esse arquivo'); }
 }
 
@@ -435,15 +454,15 @@ async function sincronizar(manual) {
     // rateio do concurso anterior: se ele entrou sem rateio (digitado ou pela planilha), busca de novo para completar
     const ant = dmap().get(ult.c - 1); if (ant && !ant.p) { try { const x = await buscaConcurso(ult.c - 1); if (x.p) novos.push(x); } catch (e) {} }
     const antes = S.rounds.filter(r => !r.res).map(r => r.id);
-    const r = mergeDraws(novos.map(x => ({ c: x.c, n: x.n, d: x.d, p: x.p || undefined })));
+    const r = mergeDraws(novos.map(x => ({ c: x.c, n: x.n, d: x.d, p: x.p || undefined })), true);
     S.sync = { ts: Date.now(), ok: true, src: ult.src, c: ult.c }; save();
     const conf = S.rounds.filter(x => antes.includes(x.id) && x.res), ganho = conf.reduce((a, x) => a + (x.premio || 0), 0);
-    if (r.add) toast(`Concurso ${ult.c} chegou` + (conf.length ? (ganho ? ` · 🏆 você ganhou ${brl(ganho)}!` : ' · suas pastas foram conferidas') : ''));
+    if (r.corrigidos) {} else if (r.add) toast(`Concurso ${ult.c} chegou` + (conf.length ? (ganho ? ` · 🏆 você ganhou ${brl(ganho)}!` : ' · suas pastas foram conferidas') : ''));
     else if (manual) toast(`Tudo em dia: último é o ${ult.c}`);
   } catch (e) {
     S.sync = { ts: Date.now(), ok: false, erro: String(e.message || e) }; save();
     if (manual) toast('Não consegui buscar. Digite o resultado ou importe a planilha.');
-  } finally { sincronizando = false; render(); }
+  } finally { sincronizando = false; abreRodada(); render(); }
 }
 async function baixarHistorico() {
   toast('Baixando histórico completo…');
@@ -451,7 +470,7 @@ async function baixarHistorico() {
     const arr = await getJSON('https://loteriascaixa-api.herokuapp.com/api/lotofacil');
     const list = (Array.isArray(arr) ? arr : []).map(normaliza).filter(Boolean).map(x => ({ c: x.c, n: x.n, d: x.d, p: x.p || undefined }));
     if (list.length < 100) throw new Error('poucos dados');
-    const r = mergeDraws(list); toast(`${r.add} concursos adicionados`); render();
+    const r = mergeDraws(list, true); abreRodada(); if (!r.corrigidos) toast(`${r.add} concursos adicionados`); render();
   } catch (e) { toast('Não deu para baixar. Use a planilha da Caixa.'); }
 }
 const syncTxt = () => !S.sync ? 'Ainda não buscou.' : S.sync.ok ? `Última busca: ${new Date(S.sync.ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · fonte: ${esc(S.sync.src)}` : `Última tentativa falhou (${new Date(S.sync.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}). Sem internet ou a fonte está fora do ar.`;
@@ -482,7 +501,7 @@ function atualizaPrevisoes() {
   let mudou = false; const dm = new Map(S.draws.map(d => [d.c, toMask(d.n)]));
   for (const p of S.prevs) if (p.hits == null && dm.has(p.c)) { p.hits = pop(p.m & dm.get(p.c)); mudou = true; }
   const c = (S.draws.at(-1)?.c || 0) + 1;
-  if (S.draws.length >= 30 && !S.prevs.some(p => p.c === c)) {
+  if (S.draws.length >= 30 && !S.prevs.some(p => p.c === c) && concursoAberto().fechado !== c) {
     const P = consenso(hist()); S.prevs.push({ c, ts: Date.now(), m: P.m, b: P.beirada, pesos: P.pesos, hits: null }); mudou = true;
     if (S.prevs.length > 3000) S.prevs = S.prevs.slice(-3000);
   }
@@ -498,13 +517,13 @@ function veredito(n, media) {
 }
 function apostarPrev(st) {
   const p = S.prevs.find(x => x.c === (S.draws.at(-1)?.c || 0) + 1); if (!p) return;
+  if (concursoAberto().fechado === p.c) return toast(`Apostas encerradas: o concurso ${p.c} já foi sorteado`);
   const r = garanteRodada(), ja = r.lotes.flatMap(l => l.prev ? l.jogos.filter(j => j.m === p.m) : [])[0];
   if (ja) {
-    // já existe: rascunho pode virar aposta; o contrário não (para não sumir do gasto sem querer)
+    // já existe: antes do resultado, dá para ir e voltar entre aposta e rascunho
     if (ja.st === st) return toast(st === 'salvo' ? 'A previsão já está salva para apostar' : 'A previsão já está nos rascunhos');
-    if (st === 'rasc') return toast('A previsão já está salva para apostar');
-    if (!checaLimite(S.cfg.preco, 'prev' + p.c)) return;
-    ja.st = 'salvo'; r.preco = S.cfg.preco; recalc(r); save(); render(); return toast('Previsão passou de rascunho para aposta');
+    if (st === 'salvo' && !checaLimite(S.cfg.preco, 'prev' + p.c)) return;
+    ja.st = st; r.preco = S.cfg.preco; recalc(r); save(); render(); return toast(st === 'salvo' ? 'Previsão passou de rascunho para aposta' : 'Previsão voltou para rascunho');
   }
   if (st === 'salvo' && !checaLimite(S.cfg.preco, 'prev' + p.c)) return;
   r.lotes.push({ id: uid(), ts: Date.now(), strat: 'previsao', prev: true, jogos: [{ m: p.m, st, sel: true }] }); r.mine = salvos(r); save(); render();
@@ -512,8 +531,8 @@ function apostarPrev(st) {
 }
 function prevCard() {
   atualizaPrevisoes();
-  const c = (S.draws.at(-1)?.c || 0) + 1, p = S.prevs.find(x => x.c === c);
-  if (!p) return S.draws.length ? `<div class="card prevcard"><h2>🔮 Previsão</h2><p class="mu" style="margin:0">Preciso de pelo menos 30 concursos no histórico para prever.</p></div>` : '';
+  const c = (S.draws.at(-1)?.c || 0) + 1, p = S.prevs.find(x => x.c === c), fechado = concursoAberto().fechado === c;
+  if (!p) return S.draws.length ? `<div class="card prevcard"><h2>🔮 Previsão</h2><p class="mu" style="margin:0">${fechado ? `O concurso ${c} já foi sorteado e não tinha previsão trancada antes do sorteio. A próxima previsão nasce quando o resultado chegar.` : 'Preciso de pelo menos 30 concursos no histórico para prever.'}</p></div>` : '';
   const P = consenso(hist()), mx = Math.max(...P.pts.slice(1)), mn = Math.min(...P.pts.slice(1)), viva = S.prevs.filter(x => x.hits != null);
   const nv = viva.length, mv = nv ? viva.reduce((a, x) => a + x.hits, 0) / nv : 0, V = veredito(nv, mv), bt = S.bt && S.bt.prev, Vb = bt ? veredito(bt.n, bt.soma / bt.n) : null;
   const f2 = v => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -524,7 +543,7 @@ function prevCard() {
     <div class="balls prevballs">${toNums(p.m).map(n => `<span class="b">${pad(n)}</span>`).join('')}</div>
     <h3>Na beirada (16º, 17º e 18º)</h3><div class="balls">${p.b.map(n => `<span class="b">${pad(n)}</span>`).join('')}</div>
     <p class="mu" style="margin:10px 0 0">🔒 Travada em ${new Date(p.ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}. Não muda mais até o resultado sair.</p>
-    <div class="grid2" style="margin-top:12px"><button class="btn sm" onclick="apostarPrev('salvo')">Apostar a previsão</button><button class="btn sec sm" onclick="apostarPrev('rasc')">Guardar como rascunho</button></div>
+    ${fechado ? `<div class="note" style="color:var(--warn)">⛔ Apostas encerradas: o concurso ${c} já foi sorteado e o resultado ainda não saiu. A previsão continua valendo no placar.</div>` : `<div class="grid2" style="margin-top:12px"><button class="btn sm" onclick="apostarPrev('salvo')">Apostar a previsão</button><button class="btn sec sm" onclick="apostarPrev('rasc')">Guardar como rascunho</button></div>`}
     <details style="margin-top:12px"><summary class="mu">▸ Mapa de força das 25 dezenas</summary><p class="mu">Quanto mais forte a cor, mais pontos a dezena fez na votação. % = pontos comparados com a 1ª colocada. As com contorno estão na previsão.</p><div class="heat">${Array.from({ length: 25 }, (_, i) => cell(i + 1)).join('')}</div></details>
     <details style="margin-top:8px"><summary class="mu">▸ Quem votou e com que peso</summary>${VOTANTES.map(id => `<div class="row sp" style="padding:5px 0;border-top:1px solid var(--line)"><span>${nomeV(id)}</span><b>peso ${p.pesos[id] || 2}</b></div>`).join('')}<p class="mu">Peso 3 = a melhor das três no ranking, 2 = a do meio, 1 = a pior. Sem ranking ainda, todas valem 2.</p></details></div>
   <div class="card"><h2>📈 Placar da previsão</h2>
@@ -537,7 +556,17 @@ function prevCard() {
     ${nv ? `<h3>Últimas previsões</h3>${viva.slice(-10).reverse().map(x => { const d = S.draws.find(z => z.c === x.c); return `<details class="hist"><summary class="row sp"><span><b>#${x.c}</b></span><span class="pill ${x.hits >= 11 ? 'ok' : ''}">${x.hits} acertos</span></summary><div style="margin-top:8px">${balls(x.m, d ? toMask(d.n) : 0)}</div></details>`; }).join('')}` : ''}</div>`;
 }
 /* ================= rodadas ================= */
-function rodadaAtual() { const c = (S.draws.at(-1)?.c || 0) + 1; return { c, r: S.rounds.find(x => x.c === c && !x.res) }; }
+// concurso aberto para apostas: normalmente "último resultado + 1"; mas se a data do próximo sorteio (vinda da API) já passou
+// do horário de fechamento das apostas e o resultado ainda não chegou, as apostas vão para o concurso seguinte
+const parseData = v => { const m = okData(v) && v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null; };
+function concursoAberto() {
+  const prox = (S.draws.at(-1)?.c || 0) + 1, d = S.prox && S.prox.c === prox ? parseData(S.prox.d) : null;
+  if (d) { d.setHours(d.getDay() === 0 ? S.cfg.fechaDom : S.cfg.fecha, 0, 0, 0); if (Date.now() >= d.getTime()) return { c: prox + 1, fechado: prox }; }
+  return { c: prox, fechado: null };
+}
+// concurso já sorteado (ou com apostas encerradas): não dá mais para mexer nas apostas dele
+const encerrado = r => !!r.res || r.c < concursoAberto().c;
+function rodadaAtual() { const { c } = concursoAberto(); return { c, r: S.rounds.find(x => x.c === c && !x.res) }; }
 function salvos(r) { return r.lotes.flatMap(l => l.jogos.filter(j => j.st === 'salvo').map(j => j.m)); }
 const findL = (rid, lid) => { const r = S.rounds.find(x => x.id === rid); return [r, r.lotes.find(l => l.id === lid)]; };
 // jogos "sombra" de cada estratégia, só para o ranking (sempre na quantidade padrão e antes do resultado)
@@ -553,6 +582,8 @@ function rodadaPara(c) {
   let r = S.rounds.find(x => x.c === c); if (r) return r;
   r = { id: uid(), c, ts: Date.now(), strat: lider(), shadow: {}, lotes: [], mine: [], preco: S.cfg.preco, res: null }; S.rounds.push(r); return r;
 }
+// cria a rodada do concurso aberto com os jogos sombra de todas as estratégias, mesmo sem jogos seus
+function abreRodada() { try { if (S.draws.length >= 30) { garanteRodada(); save(); } } catch (e) {} }
 function garanteSombras() { const { r } = rodadaAtual(); if (r && !Object.keys(r.shadow || {}).length && S.draws.length >= 30) { r.shadow = sombras(); save(); } }
 function recalc(r) { r.mine = salvos(r); if (r.res) { r.hits = r.mine.map(g => pop(g & r.res)); r.premio = r.hits.reduce((a, x) => a + prize(x, r.c), 0); } }
 // limite de gasto do mês (pela data em que os jogos foram salvos)
@@ -713,6 +744,8 @@ function vJogar() {
       <p class="mu" style="margin:10px 0 0;font-size:12.5px">Se o resultado desse concurso já existir, o app confere na hora.</p></div>`;
     setTimeout(foraInfo, 0);
   } else {
+  const fch = concursoAberto().fechado;
+  if (fch) h += `<div class="note" style="margin:0 0 12px;color:var(--warn)">⏰ O concurso ${fch} já foi sorteado e o resultado ainda não saiu. Os jogos gerados agora vão para o ${c}.</div>`;
   h += `<div class="row sp"><h2 style="margin:0">Concurso ${c}</h2><span class="pill ac">${SN(sid)}</span></div>
     ${S.prox && S.prox.c === c && S.prox.d ? `<p style="margin:6px 0 0">📅 Sorteio em <b>${esc(S.prox.d)}</b></p>` : ''}
     <p class="mu" style="margin:6px 0 12px">Estratégia escolhida automaticamente: a que lidera o ranking.</p>
@@ -818,8 +851,8 @@ function vAjuda() {
     ${ex('com 100 previsões, o limite é 9 + 2 × 1,2247 ÷ 10 = <b>9,245</b>. Se a média for 9,30, a previsão é liberada 🔓. Se for 9,10, continua em observação 🔒. Com 400 previsões o limite cai para 9 + 2 × 1,2247 ÷ 20 = 9,122, porque com mais concursos a sorte balança menos.')}
     <p>Enquanto estiver travada, ela aparece no ranking com a etiqueta <b>em observação</b>, e o selo <b>líder</b> vai para quem realmente está escolhendo seus jogos. O placar da previsão (aba Resultado) mostra quanto falta.</p>`) +
   sec('📁 Pastas, rascunhos e simulação', `<p>Cada vez que você gera e salva, nasce uma <b>pasta</b> com o concurso, a data e a hora.</p>
-    <p><b>Jogos gerados e não salvos</b> viram rascunho sozinhos quando o resultado sai, para você ver como teriam ido. E enquanto o resultado não sai, dá para transformar rascunhos em aposta: abra a pasta e toque em <b>Apostar os rascunhos</b>.</p>
-    ${ex('você guardou a previsão como rascunho e mudou de ideia. Toque em "Apostar a previsão" (aba Resultado) ou abra a pasta 🔮 e toque em "Apostar os rascunhos". Ela passa a contar no gasto e no placar.')}
+    <p><b>Jogos gerados e não salvos</b> viram rascunho sozinhos quando o resultado sai, para você ver como teriam ido. E enquanto o resultado não sai, dá para ir e voltar: abra a pasta e toque em <b>Apostar os rascunhos</b> ou em <b>Voltar apostas para rascunho</b>. Depois do sorteio, não muda mais.</p>
+    ${ex('você guardou a previsão como rascunho e mudou de ideia. Toque em "Apostar a previsão" (aba Resultado) ou abra a pasta 🔮 e toque em "Apostar os rascunhos". Ela passa a contar no gasto e no placar. Mudou de ideia de novo? Toque em "Guardar como rascunho" ou em "Voltar apostas para rascunho" e ela sai do gasto.')}
     <ul><li>🏆 na capa: seus jogos salvos ganharam.</li><li>💡 na capa: os rascunhos teriam ganhado.</li></ul>
     <p><b>Simular no passado:</b> dentro da pasta, o app pega aqueles jogos e confere com sorteios antigos.</p>
     ${ex('você simula um jogo nos últimos 300 concursos. O app diz: "teria feito 11 pontos 30 vezes e 12 pontos 4 vezes, ganhado R$ 266 e gasto R$ 1.050".')}
@@ -847,6 +880,14 @@ function vAjuda() {
   sec('💰 Prêmio real', `<p>Os prêmios de 14 e 15 pontos mudam a cada concurso (dependem de quantas pessoas acertaram). Quando a internet traz o <b>rateio real</b> do concurso, o app guarda e usa esse valor no placar, nas pastas e na simulação.</p>
     ${ex('no concurso 3834, quem fez 14 pontos ganhou R$ 1.832,40. Se você tinha um jogo com 14 nesse concurso, o app conta R$ 1.832,40, e não a estimativa de R$ 1.500 dos Ajustes.')}
     <p>Os valores de Ajustes ficam só como reserva, para concursos sem rateio (os importados pela planilha, por exemplo).</p>`) +
+  sec('⏰ Concurso já sorteado, resultado ainda não saiu', `<p>As apostas da Lotofácil fecham às <b>20h</b> e o sorteio é às <b>21h</b> (de segunda a sexta). No domingo, o sorteio é às 11h. A API às vezes demora para publicar o resultado. Nesse intervalo, o app usa a data do próximo sorteio que veio da API: passou do horário de fechamento, ele entende que aquele concurso já está fechado.</p>
+    ${ex('é terça, 22h. O concurso 3836 foi sorteado às 21h, mas a API ainda não publicou. Se você gerar jogos agora, eles vão para o <b>3837</b>, e aparece o aviso "O concurso 3836 já foi sorteado e o resultado ainda não saiu". A previsão do 3836 fica sem os botões de apostar ("apostas encerradas"), mas continua no placar.')}
+    <p>Os horários podem ser ajustados em <b>Ajustes</b>, se a Caixa mudar.</p>`) +
+  sec('✔️ Resultado oficial corrige o digitado', `<p>Se você digitou um resultado na mão e errou uma dezena, a API corrige quando publicar. O que vem da API é marcado como <b>oficial</b>. Se as dezenas forem diferentes das que você digitou, o app troca pelas oficiais e confere tudo de novo: suas pastas, os jogos sombra do ranking e a previsão.</p>
+    ${ex('você digitou 07 no lugar de 17 no concurso 3836. Um jogo seu ficou com 10 acertos. Quando a API publica, aparece "⚠️ O resultado do concurso 3836 estava diferente do oficial e foi corrigido", e o jogo passa a ter os acertos certos (11, por exemplo, com prêmio).')}
+    <p>No ranking, o app tira os acertos antigos e soma os novos, sem contar os jogos duas vezes. A importação de planilha não corrige: só a API.</p>`) +
+  sec('📈 O ranking aprende sozinho', `<p>A cada busca de resultado (e depois de baixar o histórico), o app já abre o próximo concurso com os jogos sombra de todas as estratégias, <b>mesmo se você não gerar nada</b>. Assim o ranking aprende em todos os concursos.</p>
+    ${ex('você passou a semana sem abrir a aba Jogar, mas abriu o app todo dia. Em cada abertura, o app buscou o resultado e criou os jogos sombra do próximo concurso. No fim da semana, o ranking tem mais 6 concursos de dados.')}`) +
   sec('💾 Seus dados e segurança', `<p>Tudo fica guardado <b>só no seu celular</b>, como fotos na galeria. Ninguém mais vê, nem quem usa o mesmo link.</p>
     <p>Mas se você limpar os dados do navegador ou desinstalar o app, perde tudo. Faça backup em <b>Ajustes → Baixar arquivo</b> de vez em quando.</p>
     <p>Só restaure backups que <b>você mesmo</b> fez.</p>`) +
@@ -878,7 +919,7 @@ function vSalvos() {
       ${r.res && temRateio(r.c) ? `<p class="mu" style="margin:0 0 4px;font-size:12px">💰 Prêmios com o rateio real deste concurso.</p>` : ''}
       ${sv.length ? `<h3>Para apostar (${sv.length} · ${brl(sv.length * (r.preco || S.cfg.preco))})</h3>${sv.map((g, i) => jogo(g, 'Jogo ' + (i + 1))).join('')}` : ''}
       ${rs.length ? `<h3>Rascunhos (${rs.length})</h3>${r.res && teria ? `<div class="note" style="margin:0 0 6px;color:var(--warn)">💡 Se tivesse apostado estes rascunhos, você poderia ter ganho <b>${brl(teria)}</b>.</div>` : r.res ? `<p class="mu" style="margin:0">Os rascunhos não teriam dado prêmio.</p>` : ''}${rs.map((g, i) => jogo(g, 'Rascunho ' + (i + 1))).join('')}` : ''}
-      ${!r.res && rs.length ? `<button class="btn sm" style="width:100%;margin-top:10px" onclick="apostarRasc(${r.id},${l.id})">Apostar os rascunhos (${rs.length} · ${brl(rs.length * S.cfg.preco)})</button>` : ''}
+      ${!encerrado(r) && (rs.length || sv.length) ? `<div class="grid2" style="margin-top:10px">${rs.length ? `<button class="btn sm" onclick="apostarRasc(${r.id},${l.id})">Apostar os rascunhos (${rs.length})</button>` : '<span></span>'}${sv.length ? `<button class="btn sec sm" onclick="voltarRasc(${r.id},${l.id})">Voltar apostas para rascunho (${sv.length})</button>` : ''}</div>` : ''}
       <div class="grid2" style="margin-top:12px"><button class="btn sec sm" onclick="copiar(gameTxt(pastaJogos(${r.id},${l.id})))">Copiar texto</button><button class="btn sm" onclick="compartilhar(${r.id},${l.id})">Compartilhar</button></div>
       ${simHTML(r, l)}
       <div style="margin-top:8px;text-align:center"><button class="lnk" onclick="apagarPasta(${r.id},${l.id})">Apagar pasta</button></div></div></details>`;
@@ -886,10 +927,15 @@ function vSalvos() {
 }
 // antes do resultado, rascunhos de uma pasta podem virar aposta
 function apostarRasc(rid, lid) {
-  const [r, l] = findL(rid, lid); if (r.res) return toast('Esse concurso já foi sorteado');
+  const [r, l] = findL(rid, lid); if (encerrado(r)) return toast('Apostas encerradas para esse concurso');
   const rs = l.jogos.filter(j => j.st === 'rasc'); if (!rs.length) return;
   if (!checaLimite(rs.length * S.cfg.preco, 'rasc' + lid + ':' + rs.length)) return;
   rs.forEach(j => j.st = 'salvo'); r.preco = S.cfg.preco; recalc(r); UI.op[lid] = true; save(); render(); toast(`${rs.length} rascunho(s) agora são aposta`);
+}
+function voltarRasc(rid, lid) {
+  const [r, l] = findL(rid, lid); if (encerrado(r)) return toast('Apostas encerradas para esse concurso');
+  const sv = l.jogos.filter(j => j.st === 'salvo'); if (!sv.length) return;
+  sv.forEach(j => j.st = 'rasc'); recalc(r); UI.op[lid] = true; save(); render(); toast(`${sv.length} aposta(s) voltaram para rascunho`);
 }
 const pastaJogos = (rid, lid) => { const [, l] = findL(rid, lid), sv = l.jogos.filter(j => j.st === 'salvo'); return (sv.length ? sv : l.jogos).map(j => j.m); };
 
@@ -941,7 +987,7 @@ async function compartilhar(id, lid) {
 }
 
 function vResultado() {
-  const pend = S.rounds.filter(r => !r.res).sort((a, b) => a.c - b.c)[0];
+  const pend = S.rounds.filter(r => !r.res && r.lotes.some(l => l.jogos.length)).sort((a, b) => a.c - b.c)[0];
   const cDef = UI.cIn || (pend ? pend.c : (S.draws.at(-1)?.c || 0) + 1);
   let h = `<div class="card"><div class="row sp" style="flex-wrap:nowrap"><span class="mu">${syncTxt()}</span><button class="btn sm" onclick="sincronizar(true)">Buscar resultado</button></div></div>` + ultimoCard();
   if (UI.ultimo) { const r = S.rounds.find(x => x.id === UI.ultimo); if (r && r.c !== S.draws.at(-1)?.c) h += resultadoCard(r); }
@@ -963,7 +1009,8 @@ function ultimoCard() {
   const rs = r ? r.lotes.flatMap(l => l.jogos.filter(j => j.st === 'rasc').map(j => j.m)) : [], teria = rs.reduce((a, g) => a + prize(pop(g & m), d.c), 0);
   const fx = [15, 14, 13, 12, 11];
   return `<div class="card ultcard"><div class="row sp"><h2 style="margin:0">🎱 Último resultado</h2><span class="pill ac">#${d.c}</span></div>
-    <p class="mu" style="margin:6px 0 10px">Concurso ${d.c}${d.d ? ` · sorteado em ${esc(d.d)}` : ''}</p>
+    <p class="mu" style="margin:6px 0 10px">Concurso ${d.c}${d.d ? ` · sorteado em ${esc(d.d)}` : ''}${d.o ? ' · ✔️ oficial' : ' · digitado/planilha'}</p>
+    ${d.corr ? `<div class="note" style="margin:0 0 10px;color:var(--warn)">⚠️ Este resultado estava diferente do oficial e foi corrigido. Suas pastas, o ranking e a previsão foram conferidos de novo.</div>` : ''}
     ${balls(m)}
     ${d.p ? `<details style="margin-top:12px"><summary class="mu">▸ 💰 Rateio deste concurso</summary><table class="tb">${fx.map(k => `<tr><td>${k} acertos</td><td style="text-align:right"><b>${d.p[k] > 0 ? brl(d.p[k]) : k === 15 ? 'acumulou' : '–'}</b></td></tr>`).join('')}</table></details>` : ''}
     <h3>Seus jogos</h3>${sv.length ? `<div class="row sp"><span>${sv.length} jogo(s) · melhor: <b>${Math.max(...r.hits)} acertos</b></span><span class="pill ${r.premio ? 'ok' : ''}">${r.premio ? '🏆 ' + brl(r.premio) : 'sem prêmio'}</span></div>` : `<p class="mu" style="margin:0">Você não tinha jogos salvos para este concurso.</p>`}
@@ -1037,6 +1084,8 @@ function vAjustes() {
     <div><label class="f">Janela "recentes"</label><input type="number" min="5" max="200" value="${c.janela}" onchange="setC('janela',this.value)"></div>
     <div><label class="f">Dezenas da previsão por jogo</label><input type="number" min="10" max="14" value="${c.prevFix}" onchange="setC('prevFix',Math.min(14,Math.max(10,+this.value||13)))"></div>
     <div><label class="f">Custo por concurso</label><input disabled value="${brl(c.jogos * c.preco)}"></div>
+    <div><label class="f">Apostas fecham (seg–sex, h)</label><input type="number" min="0" max="23" value="${c.fecha}" onchange="setC('fecha',Math.min(23,Math.max(0,+this.value||0)))"></div>
+    <div><label class="f">Apostas fecham (domingo, h)</label><input type="number" min="0" max="23" value="${c.fechaDom}" onchange="setC('fechaDom',Math.min(23,Math.max(0,+this.value||0)))"></div>
     <div><label class="f">Limite por mês (0 = sem)</label><input type="number" min="0" step="10" inputmode="decimal" value="${c.limite || 0}" onchange="setC('limite',this.value)"></div></div>
     <h3>Prêmios de reserva</h3><p class="mu" style="margin:0 0 4px;font-size:12.5px">Quando a API traz o rateio real de um concurso, o app usa o valor real. Estes valores só são usados quando não há rateio.</p><div class="grid2">
     ${[11, 12, 13, 14, 15].map(k => `<div><label class="f">${k} acertos</label><input type="number" value="${c['p' + k]}" onchange="setC('p${k}',this.value)"></div>`).join('')}</div></div>
@@ -1045,9 +1094,10 @@ function vAjustes() {
     <label class="f">Restaurar (cole o backup ou importe o .json acima)</label><textarea id="rest"></textarea>
     <div style="margin-top:8px"><button class="btn sec" onclick="restore($('#rest').value)">Restaurar</button></div></div>
   <div class="card"><h2>Zerar</h2><div class="grid2"><button class="btn danger" onclick="zerar('placar')">Zerar ranking</button><button class="btn danger" onclick="zerar('tudo')">Apagar tudo</button></div><p class="mu" id="zmsg"></p></div>
-  <p class="mu" style="text-align:center">Uso pessoal. Loteria é sorte: nenhum método muda a chance de cada jogo.</p>`;
+  <p class="mu" style="text-align:center">Uso pessoal. Loteria é sorte: nenhum método muda a chance de cada jogo.</p>
+  <p class="mu" style="text-align:center;margin-top:4px">Lotofácil Lab · <b>versão ${VERSAO}</b></p>`;
 }
-function setC(k, v) { S.cfg[k] = Math.max(k === 'preco' || k === 'limite' ? 0 : 1, +v || 0); save(); render(); }
+function setC(k, v) { S.cfg[k] = Math.max(['preco', 'limite', 'fecha', 'fechaDom'].includes(k) ? 0 : 1, +v || 0); save(); render(); }
 function importText() { const d = rowsToDraws(textRows($('#pasteD').value)); if (!d.length) return toast('Não achei sorteios no texto'); const r = mergeDraws(d); toast(`${r.add} concursos novos`); render(); }
 function baixar() { try { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(S)], { type: 'application/json' })); a.download = 'lotolab-backup-' + new Date().toISOString().slice(0, 10) + '.json'; a.click(); } catch (e) { toast('Use "Copiar backup"'); } }
 function restore(t) { try { if (String(t).length > 20e6) throw 0; const o = JSON.parse(t); if (!o || !Array.isArray(o.draws)) throw 0; S = limpa(o); migra(); _Hn = -1; _DMv++; save(); toast('Backup restaurado'); render(); } catch (e) { toast('Backup inválido'); } }
