@@ -498,7 +498,14 @@ function veredito(n, media) {
 }
 function apostarPrev(st) {
   const p = S.prevs.find(x => x.c === (S.draws.at(-1)?.c || 0) + 1); if (!p) return;
-  const r = garanteRodada(); if (r.lotes.some(l => l.prev && l.jogos.some(j => j.m === p.m))) return toast('A previsão já está numa pasta');
+  const r = garanteRodada(), ja = r.lotes.flatMap(l => l.prev ? l.jogos.filter(j => j.m === p.m) : [])[0];
+  if (ja) {
+    // já existe: rascunho pode virar aposta; o contrário não (para não sumir do gasto sem querer)
+    if (ja.st === st) return toast(st === 'salvo' ? 'A previsão já está salva para apostar' : 'A previsão já está nos rascunhos');
+    if (st === 'rasc') return toast('A previsão já está salva para apostar');
+    if (!checaLimite(S.cfg.preco, 'prev' + p.c)) return;
+    ja.st = 'salvo'; r.preco = S.cfg.preco; recalc(r); save(); render(); return toast('Previsão passou de rascunho para aposta');
+  }
   if (st === 'salvo' && !checaLimite(S.cfg.preco, 'prev' + p.c)) return;
   r.lotes.push({ id: uid(), ts: Date.now(), strat: 'previsao', prev: true, jogos: [{ m: p.m, st, sel: true }] }); r.mine = salvos(r); save(); render();
   toast(st === 'salvo' ? 'Previsão salva para apostar' : 'Previsão guardada como rascunho');
@@ -811,6 +818,8 @@ function vAjuda() {
     ${ex('com 100 previsões, o limite é 9 + 2 × 1,2247 ÷ 10 = <b>9,245</b>. Se a média for 9,30, a previsão é liberada 🔓. Se for 9,10, continua em observação 🔒. Com 400 previsões o limite cai para 9 + 2 × 1,2247 ÷ 20 = 9,122, porque com mais concursos a sorte balança menos.')}
     <p>Enquanto estiver travada, ela aparece no ranking com a etiqueta <b>em observação</b>, e o selo <b>líder</b> vai para quem realmente está escolhendo seus jogos. O placar da previsão (aba Resultado) mostra quanto falta.</p>`) +
   sec('📁 Pastas, rascunhos e simulação', `<p>Cada vez que você gera e salva, nasce uma <b>pasta</b> com o concurso, a data e a hora.</p>
+    <p><b>Jogos gerados e não salvos</b> viram rascunho sozinhos quando o resultado sai, para você ver como teriam ido. E enquanto o resultado não sai, dá para transformar rascunhos em aposta: abra a pasta e toque em <b>Apostar os rascunhos</b>.</p>
+    ${ex('você guardou a previsão como rascunho e mudou de ideia. Toque em "Apostar a previsão" (aba Resultado) ou abra a pasta 🔮 e toque em "Apostar os rascunhos". Ela passa a contar no gasto e no placar.')}
     <ul><li>🏆 na capa: seus jogos salvos ganharam.</li><li>💡 na capa: os rascunhos teriam ganhado.</li></ul>
     <p><b>Simular no passado:</b> dentro da pasta, o app pega aqueles jogos e confere com sorteios antigos.</p>
     ${ex('você simula um jogo nos últimos 300 concursos. O app diz: "teria feito 11 pontos 30 vezes e 12 pontos 4 vezes, ganhado R$ 266 e gasto R$ 1.050".')}
@@ -869,10 +878,18 @@ function vSalvos() {
       ${r.res && temRateio(r.c) ? `<p class="mu" style="margin:0 0 4px;font-size:12px">💰 Prêmios com o rateio real deste concurso.</p>` : ''}
       ${sv.length ? `<h3>Para apostar (${sv.length} · ${brl(sv.length * (r.preco || S.cfg.preco))})</h3>${sv.map((g, i) => jogo(g, 'Jogo ' + (i + 1))).join('')}` : ''}
       ${rs.length ? `<h3>Rascunhos (${rs.length})</h3>${r.res && teria ? `<div class="note" style="margin:0 0 6px;color:var(--warn)">💡 Se tivesse apostado estes rascunhos, você poderia ter ganho <b>${brl(teria)}</b>.</div>` : r.res ? `<p class="mu" style="margin:0">Os rascunhos não teriam dado prêmio.</p>` : ''}${rs.map((g, i) => jogo(g, 'Rascunho ' + (i + 1))).join('')}` : ''}
+      ${!r.res && rs.length ? `<button class="btn sm" style="width:100%;margin-top:10px" onclick="apostarRasc(${r.id},${l.id})">Apostar os rascunhos (${rs.length} · ${brl(rs.length * S.cfg.preco)})</button>` : ''}
       <div class="grid2" style="margin-top:12px"><button class="btn sec sm" onclick="copiar(gameTxt(pastaJogos(${r.id},${l.id})))">Copiar texto</button><button class="btn sm" onclick="compartilhar(${r.id},${l.id})">Compartilhar</button></div>
       ${simHTML(r, l)}
       <div style="margin-top:8px;text-align:center"><button class="lnk" onclick="apagarPasta(${r.id},${l.id})">Apagar pasta</button></div></div></details>`;
   }).join('');
+}
+// antes do resultado, rascunhos de uma pasta podem virar aposta
+function apostarRasc(rid, lid) {
+  const [r, l] = findL(rid, lid); if (r.res) return toast('Esse concurso já foi sorteado');
+  const rs = l.jogos.filter(j => j.st === 'rasc'); if (!rs.length) return;
+  if (!checaLimite(rs.length * S.cfg.preco, 'rasc' + lid + ':' + rs.length)) return;
+  rs.forEach(j => j.st = 'salvo'); r.preco = S.cfg.preco; recalc(r); UI.op[lid] = true; save(); render(); toast(`${rs.length} rascunho(s) agora são aposta`);
 }
 const pastaJogos = (rid, lid) => { const [, l] = findL(rid, lid), sv = l.jogos.filter(j => j.st === 'salvo'); return (sv.length ? sv : l.jogos).map(j => j.m); };
 
