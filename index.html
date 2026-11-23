@@ -146,7 +146,7 @@ function toast(t, ms = 2200) { const e = $('#toast'); e.textContent = t; e.class
 
 /* ================= estado ================= */
 const KEY = 'lotolab-v1';
-const VERSAO = 21; // acompanha o cache do sw.js (lotolab-v19)
+const VERSAO = 23; // acompanha o cache do sw.js (lotolab-v19)
 const DEF = () => ({ draws: [], rounds: [], score: {}, bt: null, prevs: [], cfg: { jogos: 2, preco: 3.5, p11: 7, p12: 14, p13: 35, p14: 1500, p15: 1500000, janela: 20, prevFix: 13, limite: 0, fecha: 20, fechaDom: 10 } });
 const okData = v => typeof v === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(v) ? v : null;
 const esc = v => String(v ?? '').replace(/[&<>"'`]/g, ch => '&#' + ch.charCodeAt(0) + ';');
@@ -250,13 +250,16 @@ function passa(m, R, h) {
 }
 function gerar(h, sid, k, excl = [], sc = S.score) {
   const st = STRATS.find(s => s.id === sid), w = st.w ? st.w(h) : null, R = st.filtro ? h.ranges() : null, P = st.prev ? consenso(h, sc) : null;
-  const out = []; let g = 0;
+  // jogos parecidos demais entre si são evitados: no máximo 12 dezenas iguais. Na "Em volta da previsão" todos usam
+  // várias dezenas da previsão, então o limite acompanha (13 ou 14). Ordem de prioridade se não der para cumprir tudo:
+  // 1º sem repetir jogo, 2º dentro dos filtros, 3º pouca sobreposição. Se não der, gera menos jogos (e avisa) em vez de sair dos filtros
+  const lim = P ? Math.max(12, Math.min(14, Math.trunc(S.cfg.prevFix || 13))) : 12, ex = new Set(excl), out = [], tem = new Set(); let g = 0;
   while (out.length < k && g < 30000) {
-    g++; const m = P ? amostraPrev(P) : amostra(w), strict = g < 20000;
-    if (out.includes(m) || excl.includes(m)) continue;
-    if (R && strict && !passa(m, R, h)) continue;
-    if (strict && out.some(o => pop(o & m) > 12)) continue;
-    out.push(m);
+    g++; const m = P ? amostraPrev(P) : amostra(w);
+    if (tem.has(m) || ex.has(m)) continue;
+    if (R && !passa(m, R, h)) continue;
+    if (g < 15000 && out.some(o => pop(o & m) > lim)) continue;
+    out.push(m); tem.add(m);
   }
   return out;
 }
@@ -517,7 +520,7 @@ function veredito(n, media) {
 }
 function apostarPrev(st) {
   const p = S.prevs.find(x => x.c === (S.draws.at(-1)?.c || 0) + 1); if (!p) return;
-  if (concursoAberto().fechado === p.c) return toast(`Apostas encerradas: o concurso ${p.c} já foi sorteado`);
+  if (concursoAberto().fechado === p.c) return toast(`As apostas para o concurso ${p.c} já encerraram`);
   const r = garanteRodada(), ja = r.lotes.flatMap(l => l.prev ? l.jogos.filter(j => j.m === p.m) : [])[0];
   if (ja) {
     // já existe: antes do resultado, dá para ir e voltar entre aposta e rascunho
@@ -566,6 +569,14 @@ function concursoAberto() {
 }
 // concurso já sorteado (ou com apostas encerradas): não dá mais para mexer nas apostas dele
 const encerrado = r => !!r.res || r.c < concursoAberto().c;
+const aberta = r => !encerrado(r); // sem resultado E concurso >= próximo concurso aberto
+const avisoEncerrado = r => toast(`As apostas para o concurso ${r.c} já encerraram`);
+// quando as apostas de um concurso fecham, os jogos gerados e não salvos viram rascunho (assim não somem das pastas)
+function fechaNovos() {
+  let mudou = false;
+  for (const r of S.rounds) if (!r.res && encerrado(r)) for (const l of (r.lotes || [])) for (const j of l.jogos) if (j.st === 'novo') { j.st = 'rasc'; mudou = true; }
+  if (mudou) save();
+}
 function rodadaAtual() { const { c } = concursoAberto(); return { c, r: S.rounds.find(x => x.c === c && !x.res) }; }
 function salvos(r) { return r.lotes.flatMap(l => l.jogos.filter(j => j.st === 'salvo').map(j => j.m)); }
 const findL = (rid, lid) => { const r = S.rounds.find(x => x.id === rid); return [r, r.lotes.find(l => l.id === lid)]; };
@@ -597,16 +608,23 @@ function checaLimite(custo, chave) {
   if (UI.limOk === chave) { UI.limOk = null; return true; }
   UI.limOk = chave; toast(`⚠️ Isso passa do seu limite do mês: ${brl(g + custo)} de ${brl(lim)}. Toque de novo para salvar mesmo assim.`, 6000); return false;
 }
+// quantidade pedida na tela: de 1 a 200 (vazio = a quantidade padrão de Ajustes)
+const qtdJogos = () => Math.min(200, Math.max(1, Math.trunc(+UI.qtd) || S.cfg.jogos || 2));
+function qtdLabel(el) { UI.qtd = +el.value; const k = qtdJogos(), b = document.getElementById('gbtn'); if (b) b.textContent = `Gerar ${k} jogo(s) · ${brl(k * S.cfg.preco)}` + (+el.value > 200 ? ' (máx. 200)' : ''); }
 function gerarMais() {
-  const h = hist(), k = Math.max(1, Math.min(200, +UI.qtd || S.cfg.jogos)), sid = lider(), r = garanteRodada();
+  const h = hist(), k = qtdJogos(), sid = lider(), r = garanteRodada();
   const usados = r.lotes.flatMap(l => l.jogos.map(j => j.m));
-  r.lotes.push({ id: uid(), ts: Date.now(), strat: sid, jogos: gerar(h, sid, k, usados).map(m => ({ m, st: 'novo', sel: true })) });
+  const g = gerar(h, sid, k, usados);
+  if (!g.length) return toast('Não há mais jogos diferentes para gerar neste concurso com essa estratégia');
+  r.lotes.push({ id: uid(), ts: Date.now(), strat: sid, jogos: g.map(m => ({ m, st: 'novo', sel: true })) });
   save(); render();
+  if (g.length < k) toast(`Só deu para gerar ${g.length} de ${k} jogos diferentes com essa estratégia`, 4000);
 }
 function selJ(rid, lid, i) { const [, l] = findL(rid, lid); l.jogos[i].sel = !l.jogos[i].sel; save(); render(); }
 function selTodos(rid, lid, v) { const [, l] = findL(rid, lid); l.jogos.forEach(j => { if (j.st === 'novo') j.sel = v; }); save(); render(); }
 const TEIM = [1, 3, 6, 9, 12, 18, 24];
 function guardar(rid, lid, st) {
+  { const [r0] = findL(rid, lid); if (encerrado(r0)) { fechaNovos(); render(); return avisoEncerrado(r0); } }
   const [r, l] = findL(rid, lid), marc = l.jogos.filter(j => j.st === 'novo' && j.sel), n = marc.length;
   if (!n) return toast('Marque algum jogo');
   const t = st === 'salvo' ? (UI.teim[lid] || 1) : 1;
@@ -729,7 +747,7 @@ function vJogar() {
     <ol class="steps"><li>No site da Caixa, abra a Lotofácil e toque em <b>Download de resultados</b>.</li><li>Aqui no app, vá em <b>Ajustes → Importar planilha</b> e escolha o arquivo.</li><li>Volte aqui e toque em <b>Gerar jogos</b>.</li></ol>
     <a href="https://loterias.caixa.gov.br/Paginas/Lotofacil.aspx" target="_blank" rel="noopener">Abrir site da Caixa</a>
     <div style="margin-top:14px"><button class="btn" onclick="go('ajustes')">Importar planilha</button></div></div>`;
-  const { c, r } = rodadaAtual(), p = placar(), sid = lider(), qtd = UI.qtd || S.cfg.jogos, lim = S.cfg.limite || 0, gm = gastoMes();
+  const { c, r } = rodadaAtual(), p = placar(), sid = lider(), qtd = qtdJogos(), lim = S.cfg.limite || 0, gm = gastoMes();
   const mes = new Date().toLocaleDateString('pt-BR', { month: 'long' });
   let h = `<div class="card gastobox"><div class="row sp"><span class="mu">Gasto em ${mes}</span><b class="${lim && gm > lim ? 'neg' : ''}">${brl(gm)}${lim ? ` <span class="mu">de ${brl(lim)}</span>` : ''}</b></div>
     ${lim ? `<div class="bar" style="margin-top:8px"><i class="${gm > lim ? 'over' : gm > lim * .8 ? 'quase' : ''}" style="width:${Math.min(100, gm / lim * 100)}%"></i></div>` : `<p class="mu" style="margin:4px 0 0;font-size:12px">Defina um limite por mês em Ajustes, se quiser.</p>`}</div>`;
@@ -750,7 +768,7 @@ function vJogar() {
     ${S.prox && S.prox.c === c && S.prox.d ? `<p style="margin:6px 0 0">📅 Sorteio em <b>${esc(S.prox.d)}</b></p>` : ''}
     <p class="mu" style="margin:6px 0 12px">Estratégia escolhida automaticamente: a que lidera o ranking.</p>
     ${UI.bt ? `<div class="note" style="margin:0 0 10px">⏳ Calibrando o ranking com o passado… aguarde um pouco.</div>` : ''}
-    <label class="f">Quantos jogos gerar</label><div class="row" style="flex-wrap:nowrap"><input type="number" inputmode="numeric" min="1" max="200" value="${qtd}" style="width:90px" oninput="UI.qtd=+this.value;document.getElementById('gbtn').textContent='Gerar '+(+this.value||1)+' jogo(s) · '+brl((+this.value||1)*S.cfg.preco)">
+    <label class="f">Quantos jogos gerar</label><div class="row" style="flex-wrap:nowrap"><input type="number" inputmode="numeric" min="1" max="200" value="${qtd}" style="width:90px" oninput="qtdLabel(this)">
     <button class="btn" id="gbtn" onclick="gerarMais()">Gerar ${qtd} jogo(s) · ${brl(qtd * S.cfg.preco)}</button></div>`;
   const novos = r ? r.lotes.filter(l => l.jogos.some(j => j.st === 'novo')) : [];
   for (const l of novos) {
@@ -882,6 +900,9 @@ function vAjuda() {
     <p>Os valores de Ajustes ficam só como reserva, para concursos sem rateio (os importados pela planilha, por exemplo).</p>`) +
   sec('⏰ Concurso já sorteado, resultado ainda não saiu', `<p>As apostas da Lotofácil fecham às <b>20h</b> e o sorteio é às <b>21h</b> (de segunda a sexta). No domingo, o sorteio é às 11h. A API às vezes demora para publicar o resultado. Nesse intervalo, o app usa a data do próximo sorteio que veio da API: passou do horário de fechamento, ele entende que aquele concurso já está fechado.</p>
     ${ex('é terça, 22h. O concurso 3836 foi sorteado às 21h, mas a API ainda não publicou. Se você gerar jogos agora, eles vão para o <b>3837</b>, e aparece o aviso "O concurso 3836 já foi sorteado e o resultado ainda não saiu". A previsão do 3836 fica sem os botões de apostar ("apostas encerradas"), mas continua no placar.')}
+    <p>Quando as apostas de um concurso fecham:</p><ul><li>jogos gerados e <b>não salvos</b> viram <b>rascunho</b> sozinhos, para não sumirem (e depois você vê como teriam ido);</li><li>a pasta mostra o selo <b>⏳ sorteado, aguardando resultado</b>;</li><li>não dá mais para trocar aposta e rascunho: o app avisa "As apostas para o concurso X já encerraram".</li></ul>
+    ${ex('você gerou 5 jogos para o 3836 às 19h e não salvou. Às 20h as apostas fecham: os 5 viram rascunho na pasta do 3836, com o selo ⏳. Quando o resultado sai, a pasta mostra se eles teriam ganho.')}
+    <p>Numa teimosinha, só as pastas dos concursos ainda abertos podem mudar. As já sorteadas ficam como estavam.</p>
     <p>Os horários podem ser ajustados em <b>Ajustes</b>, se a Caixa mudar.</p>`) +
   sec('✔️ Resultado oficial corrige o digitado', `<p>Se você digitou um resultado na mão e errou uma dezena, a API corrige quando publicar. O que vem da API é marcado como <b>oficial</b>. Se as dezenas forem diferentes das que você digitou, o app troca pelas oficiais e confere tudo de novo: suas pastas, os jogos sombra do ranking e a previsão.</p>
     ${ex('você digitou 07 no lugar de 17 no concurso 3836. Um jogo seu ficou com 10 acertos. Quando a API publica, aparece "⚠️ O resultado do concurso 3836 estava diferente do oficial e foi corrigido", e o jogo passa a ter os acertos certos (11, por exemplo, com prêmio).')}
@@ -911,7 +932,7 @@ function vSalvos() {
   if (!list.length) return h + `<div class="card"><p class="mu" style="margin:0">Nenhuma pasta nesse filtro.</p></div>`;
   return h + list.map(({ r, l, sv, rs, ganho, teria }) => {
     const d = new Date(l.ts), quando = d.toLocaleDateString('pt-BR') + ' às ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    const st = !r.res ? `<span class="pill">aguardando</span>` : ganho ? `<span class="pill ok">🏆 ${brl(ganho)}</span>` : teria ? `<span class="pill wn">💡 ${brl(teria)}</span>` : `<span class="pill">sem prêmio</span>`;
+    const st = !r.res ? (encerrado(r) ? `<span class="pill wn">⏳ sorteado, aguardando resultado</span>` : `<span class="pill">aguardando</span>`) : ganho ? `<span class="pill ok">🏆 ${brl(ganho)}</span>` : teria ? `<span class="pill wn">💡 ${brl(teria)}</span>` : `<span class="pill">sem prêmio</span>`;
     const jogo = (g, lbl) => { const ht = r.res ? pop(g & r.res) : 0, p = prize(ht, r.c); return `<div class="game"><div class="lbl"><span>${lbl}</span>${r.res ? `<span class="${p ? 'pos' : ''}"><b>${ht}</b> acertos${p ? ' · ' + brl(p) : ''}</span>` : ''}</div>${balls(g, r.res || 0)}</div>`; };
     return `<details class="card folder ${ganho ? 'win' : teria ? 'maybe' : ''}" ${UI.op[l.id] ? 'open' : ''} ontoggle="UI.op[${l.id}]=this.open"><summary class="row sp"><span class="row" style="gap:12px;flex-wrap:nowrap"><span class="fic">${ganho ? '🏆' : teria ? '💡' : '📁'}</span><span><b>Concurso ${r.c}</b> <span class="mu">· ${sv.length + rs.length} jogos</span><br><span class="mu">${quando}</span>${l.prev || l.teim || l.fora ? `<br><span class="tags">${l.prev ? '<span>🔮 previsão</span>' : ''}${l.teim ? `<span>🔁 teimosinha ${l.teim.i}/${l.teim.n}</span>` : ''}${l.fora ? '<span>📥 de fora</span>' : ''}</span>` : ''}</span></span>${st}</summary>
       <div style="margin-top:10px">${r.res ? `<h3 style="margin-top:0">Sorteadas</h3>${balls(r.res)}` : ''}
@@ -927,13 +948,13 @@ function vSalvos() {
 }
 // antes do resultado, rascunhos de uma pasta podem virar aposta
 function apostarRasc(rid, lid) {
-  const [r, l] = findL(rid, lid); if (encerrado(r)) return toast('Apostas encerradas para esse concurso');
+  const [r, l] = findL(rid, lid); if (encerrado(r)) return avisoEncerrado(r);
   const rs = l.jogos.filter(j => j.st === 'rasc'); if (!rs.length) return;
   if (!checaLimite(rs.length * S.cfg.preco, 'rasc' + lid + ':' + rs.length)) return;
   rs.forEach(j => j.st = 'salvo'); r.preco = S.cfg.preco; recalc(r); UI.op[lid] = true; save(); render(); toast(`${rs.length} rascunho(s) agora são aposta`);
 }
 function voltarRasc(rid, lid) {
-  const [r, l] = findL(rid, lid); if (encerrado(r)) return toast('Apostas encerradas para esse concurso');
+  const [r, l] = findL(rid, lid); if (encerrado(r)) return avisoEncerrado(r);
   const sv = l.jogos.filter(j => j.st === 'salvo'); if (!sv.length) return;
   sv.forEach(j => j.st = 'rasc'); recalc(r); UI.op[lid] = true; save(); render(); toast(`${sv.length} aposta(s) voltaram para rascunho`);
 }
@@ -1110,6 +1131,7 @@ function zerar(o) {
 function render() {
   try { atualizaPrevisoes(); } catch (e) {}
   try { garanteSombras(); } catch (e) {}
+  try { fechaNovos(); } catch (e) {}
   nav();
   $('#hdr').innerHTML = S.draws.length ? `último #${S.draws.at(-1).c}` : '';
   $('#app').innerHTML = ({ ajuda: vAjuda, jogar: vJogar, salvos: vSalvos, resultado: vResultado, ranking: vRanking, numeros: vNumeros, ajustes: vAjustes })[UI.tab]();
