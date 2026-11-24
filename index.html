@@ -146,8 +146,8 @@ function toast(t, ms = 2200) { const e = $('#toast'); e.textContent = t; e.class
 
 /* ================= estado ================= */
 const KEY = 'lotolab-v1';
-const VERSAO = 23; // acompanha o cache do sw.js (lotolab-v19)
-const DEF = () => ({ draws: [], rounds: [], score: {}, bt: null, prevs: [], cfg: { jogos: 2, preco: 3.5, p11: 7, p12: 14, p13: 35, p14: 1500, p15: 1500000, janela: 20, prevFix: 13, limite: 0, fecha: 20, fechaDom: 10 } });
+const VERSAO = 24; // acompanha o cache do sw.js (lotolab-v19)
+const DEF = () => ({ draws: [], rounds: [], score: {}, bt: null, prevs: [], cfg: { jogos: 2, preco: 3.5, p11: 7, p12: 14, p13: 35, p14: 1500, p15: 1500000, janela: 20, prevFix: 13, limite: 0, fecha: 20, fechaVesp: 22 } });
 const okData = v => typeof v === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(v) ? v : null;
 const esc = v => String(v ?? '').replace(/[&<>"'`]/g, ch => '&#' + ch.charCodeAt(0) + ';');
 // Valida tudo que vem do armazenamento ou de um backup: só números, ids conhecidos e datas no formato dd/mm/aaaa
@@ -160,7 +160,7 @@ function limpa(o) {
   const sc = x => obj(x) ? { j: Math.max(0, I(x.j)), h: [0, 1, 2, 3, 4].map(i => Math.max(0, I(arr(x.h)[i]))), s: Math.max(0, I(x.s)), js: Math.max(0, I(x.js)) } : null;
   const scs = x => { const r = {}; if (obj(x)) for (const k of IDS) { const v = sc(x[k]); if (v) r[k] = v; } return r; };
   if (obj(o.cfg)) for (const k in out.cfg) if (k in o.cfg) out.cfg[k] = Math.max(0, N(o.cfg[k], out.cfg[k]));
-  out.cfg.jogos = Math.min(200, Math.max(1, Math.trunc(out.cfg.jogos))); out.cfg.janela = Math.min(500, Math.max(5, Math.trunc(out.cfg.janela))); out.cfg.prevFix = Math.min(14, Math.max(10, Math.trunc(out.cfg.prevFix))); out.cfg.fecha = Math.min(23, Math.max(0, Math.trunc(out.cfg.fecha))); out.cfg.fechaDom = Math.min(23, Math.max(0, Math.trunc(out.cfg.fechaDom)));
+  out.cfg.jogos = Math.min(200, Math.max(1, Math.trunc(out.cfg.jogos))); out.cfg.janela = Math.min(500, Math.max(5, Math.trunc(out.cfg.janela))); out.cfg.prevFix = Math.min(14, Math.max(10, Math.trunc(out.cfg.prevFix))); out.cfg.fecha = Math.min(23, Math.max(0, Math.trunc(out.cfg.fecha))); out.cfg.fechaVesp = Math.min(23, Math.max(0, Math.trunc(out.cfg.fechaVesp)));
   const limpaP = x => { if (!obj(x)) return undefined; const r = {}; for (let k = 11; k <= 15; k++) if (x[k] != null) { const v = N(x[k], -1); if (v >= 0 && v < 1e10) r[k] = Math.round(v * 100) / 100; } return Object.keys(r).length ? r : undefined; };
   out.draws = arr(o.draws).filter(obj).map(d => ({ c: I(d.c), n: arr(d.n).map(x => I(x)).filter(x => x >= 1 && x <= 25), d: okData(d.d), p: limpaP(d.p), o: d.o ? true : undefined, corr: d.corr ? true : undefined }))
     .filter(d => d.c > 0 && d.n.length === 15 && new Set(d.n).size === 15).map(d => (d.n.sort((a, b) => a - b), d));
@@ -564,7 +564,8 @@ function prevCard() {
 const parseData = v => { const m = okData(v) && v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null; };
 function concursoAberto() {
   const prox = (S.draws.at(-1)?.c || 0) + 1, d = S.prox && S.prox.c === prox ? parseData(S.prox.d) : null;
-  if (d) { d.setHours(d.getDay() === 0 ? S.cfg.fechaDom : S.cfg.fecha, 0, 0, 0); if (Date.now() >= d.getTime()) return { c: prox + 1, fechado: prox }; }
+  // sorteio de domingo (11h): as apostas fecham na véspera, às 22h do sábado; nos outros dias, às 20h do próprio dia
+  if (d) { if (d.getDay() === 0) { d.setDate(d.getDate() - 1); d.setHours(S.cfg.fechaVesp, 0, 0, 0); } else d.setHours(S.cfg.fecha, 0, 0, 0); if (Date.now() >= d.getTime()) return { c: prox + 1, fechado: prox }; }
   return { c: prox, fechado: null };
 }
 // concurso já sorteado (ou com apostas encerradas): não dá mais para mexer nas apostas dele
@@ -898,7 +899,7 @@ function vAjuda() {
   sec('💰 Prêmio real', `<p>Os prêmios de 14 e 15 pontos mudam a cada concurso (dependem de quantas pessoas acertaram). Quando a internet traz o <b>rateio real</b> do concurso, o app guarda e usa esse valor no placar, nas pastas e na simulação.</p>
     ${ex('no concurso 3834, quem fez 14 pontos ganhou R$ 1.832,40. Se você tinha um jogo com 14 nesse concurso, o app conta R$ 1.832,40, e não a estimativa de R$ 1.500 dos Ajustes.')}
     <p>Os valores de Ajustes ficam só como reserva, para concursos sem rateio (os importados pela planilha, por exemplo).</p>`) +
-  sec('⏰ Concurso já sorteado, resultado ainda não saiu', `<p>As apostas da Lotofácil fecham às <b>20h</b> e o sorteio é às <b>21h</b> (de segunda a sexta). No domingo, o sorteio é às 11h. A API às vezes demora para publicar o resultado. Nesse intervalo, o app usa a data do próximo sorteio que veio da API: passou do horário de fechamento, ele entende que aquele concurso já está fechado.</p>
+  sec('⏰ Concurso já sorteado, resultado ainda não saiu', `<p>As apostas da Lotofácil fecham às <b>20h</b> e o sorteio é às <b>21h</b> (de segunda a sexta). No domingo, o sorteio é às 11h, e as apostas fecham na véspera, às <b>22h do sábado</b>. A API às vezes demora para publicar o resultado. Nesse intervalo, o app usa a data do próximo sorteio que veio da API: passou do horário de fechamento, ele entende que aquele concurso já está fechado.</p>
     ${ex('é terça, 22h. O concurso 3836 foi sorteado às 21h, mas a API ainda não publicou. Se você gerar jogos agora, eles vão para o <b>3837</b>, e aparece o aviso "O concurso 3836 já foi sorteado e o resultado ainda não saiu". A previsão do 3836 fica sem os botões de apostar ("apostas encerradas"), mas continua no placar.')}
     <p>Quando as apostas de um concurso fecham:</p><ul><li>jogos gerados e <b>não salvos</b> viram <b>rascunho</b> sozinhos, para não sumirem (e depois você vê como teriam ido);</li><li>a pasta mostra o selo <b>⏳ sorteado, aguardando resultado</b>;</li><li>não dá mais para trocar aposta e rascunho: o app avisa "As apostas para o concurso X já encerraram".</li></ul>
     ${ex('você gerou 5 jogos para o 3836 às 19h e não salvou. Às 20h as apostas fecham: os 5 viram rascunho na pasta do 3836, com o selo ⏳. Quando o resultado sai, a pasta mostra se eles teriam ganho.')}
@@ -1106,7 +1107,7 @@ function vAjustes() {
     <div><label class="f">Dezenas da previsão por jogo</label><input type="number" min="10" max="14" value="${c.prevFix}" onchange="setC('prevFix',Math.min(14,Math.max(10,+this.value||13)))"></div>
     <div><label class="f">Custo por concurso</label><input disabled value="${brl(c.jogos * c.preco)}"></div>
     <div><label class="f">Apostas fecham (seg–sex, h)</label><input type="number" min="0" max="23" value="${c.fecha}" onchange="setC('fecha',Math.min(23,Math.max(0,+this.value||0)))"></div>
-    <div><label class="f">Apostas fecham (domingo, h)</label><input type="number" min="0" max="23" value="${c.fechaDom}" onchange="setC('fechaDom',Math.min(23,Math.max(0,+this.value||0)))"></div>
+    <div><label class="f">Sorteio de domingo: fecham no sábado às (h)</label><input type="number" min="0" max="23" value="${c.fechaVesp}" onchange="setC('fechaVesp',Math.min(23,Math.max(0,+this.value||0)))"></div>
     <div><label class="f">Limite por mês (0 = sem)</label><input type="number" min="0" step="10" inputmode="decimal" value="${c.limite || 0}" onchange="setC('limite',this.value)"></div></div>
     <h3>Prêmios de reserva</h3><p class="mu" style="margin:0 0 4px;font-size:12.5px">Quando a API traz o rateio real de um concurso, o app usa o valor real. Estes valores só são usados quando não há rateio.</p><div class="grid2">
     ${[11, 12, 13, 14, 15].map(k => `<div><label class="f">${k} acertos</label><input type="number" value="${c['p' + k]}" onchange="setC('p${k}',this.value)"></div>`).join('')}</div></div>
@@ -1118,7 +1119,7 @@ function vAjustes() {
   <p class="mu" style="text-align:center">Uso pessoal. Loteria é sorte: nenhum método muda a chance de cada jogo.</p>
   <p class="mu" style="text-align:center;margin-top:4px">Lotofácil Lab · <b>versão ${VERSAO}</b></p>`;
 }
-function setC(k, v) { S.cfg[k] = Math.max(['preco', 'limite', 'fecha', 'fechaDom'].includes(k) ? 0 : 1, +v || 0); save(); render(); }
+function setC(k, v) { S.cfg[k] = Math.max(['preco', 'limite', 'fecha', 'fechaVesp'].includes(k) ? 0 : 1, +v || 0); save(); render(); }
 function importText() { const d = rowsToDraws(textRows($('#pasteD').value)); if (!d.length) return toast('Não achei sorteios no texto'); const r = mergeDraws(d); toast(`${r.add} concursos novos`); render(); }
 function baixar() { try { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(S)], { type: 'application/json' })); a.download = 'lotolab-backup-' + new Date().toISOString().slice(0, 10) + '.json'; a.click(); } catch (e) { toast('Use "Copiar backup"'); } }
 function restore(t) { try { if (String(t).length > 20e6) throw 0; const o = JSON.parse(t); if (!o || !Array.isArray(o.draws)) throw 0; S = limpa(o); migra(); _Hn = -1; _DMv++; save(); toast('Backup restaurado'); render(); } catch (e) { toast('Backup inválido'); } }
