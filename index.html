@@ -125,6 +125,25 @@ nav button{font-size:10.5px}
 .game.win.teria .winbadge{background:var(--warn);color:#2b1a00}
 .game+.game.win,.game.win+.game{border-top:0}
 .vivo{grid-column:1/-1;font-size:12.5px;color:#cfe9ff;background:rgba(80,160,255,.08);border-radius:8px;padding:5px 8px}
+.rk{grid-template-columns:1fr auto;gap:4px 10px;padding:14px 0}
+.pts{grid-column:1/-1;width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;margin-top:6px;font-size:12.5px;background:var(--card2);border-radius:10px;overflow:hidden}
+.pts th{font-weight:600;color:var(--mu);font-size:11px;padding:5px 2px 2px;text-align:center}.pts td{padding:2px 2px 6px;text-align:center;font-weight:700}
+.pts th:first-child,.pts td:first-child{text-align:left;padding-left:10px;color:var(--mu);font-weight:500;font-size:11px;width:24%}
+.pts td.big{color:var(--warn)}.pts tr.live td{color:var(--blue);padding-top:0}.pts tr.live td:first-child{color:var(--blue);opacity:.85;white-space:nowrap}
+:root{--blue:#6fb6ff}
+.ruler{grid-column:1/-1;position:relative;height:24px;margin:6px 4px 0}.ruler .axis{position:absolute;left:0;right:0;top:11px;height:2px;background:#3a2f55;border-radius:2px}
+.ruler .band{position:absolute;top:6px;height:12px;background:rgba(166,155,187,.2);border-radius:6px}.ruler .zero{position:absolute;top:2px;width:2px;height:20px;background:#9a8fb3;transform:translateX(-1px)}
+.ruler .pt{position:absolute;top:5px;width:14px;height:14px;border-radius:50%;transform:translateX(-7px);border:2px solid var(--card)}
+.vv{grid-column:1/-1;font-size:12.5px;display:flex;justify-content:space-between;gap:8px;white-space:nowrap}
+.mais{grid-column:1/-1;font-size:12.5px}.mais summary{cursor:pointer}
+.leg{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--mu);margin:8px 0 2px}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:-1px;margin-right:4px}
+.mv{font-size:11.5px;padding:1px 6px;border-radius:99px;background:var(--card2);vertical-align:2px;font-weight:700}.up{color:var(--ok);font-weight:700}.dn{color:var(--bad);font-weight:700}.eq{color:var(--mu)}
+.pill.lab{background:rgba(111,182,255,.12);color:var(--blue);border-color:rgba(111,182,255,.35)}
+.mud{border-color:rgba(111,182,255,.35)}.mt{width:100%;border-collapse:collapse;font-size:12.5px}.mt th{color:var(--mu);font-weight:600;font-size:10.5px;text-align:right;padding:4px 3px;border-bottom:1px solid var(--line);line-height:1.2}
+.mt th:first-child,.mt td:first-child{text-align:left}.mt td{padding:7px 3px;text-align:right;border-bottom:1px solid #2a2140;white-space:nowrap}.mt td.nc{font-weight:700;color:var(--blue)}
+.estr{font-size:11.5px;color:#cbb6ea;background:rgba(177,76,255,.12);border-radius:99px;padding:1px 8px;margin-left:6px;font-weight:600;white-space:nowrap}
+.mixprev{margin:8px 0 0;font-size:12.5px}
+.contp{background:var(--card2);border-radius:12px;padding:10px 12px;margin:10px 0 4px;font-size:13.5px;line-height:1.7}
 .lnk{background:none;border:0;color:#ff9ab5;font:600 12px system-ui;padding:0}
 </style>
 </head>
@@ -154,7 +173,7 @@ function toast(t, ms = 2200) { const e = $('#toast'); e.textContent = t; e.class
 
 /* ================= estado ================= */
 const KEY = 'lotolab-v1';
-const VERSAO = 26; // acompanha o cache do sw.js (lotolab-v19)
+const VERSAO = 28; // acompanha o cache do sw.js (lotolab-v19)
 const DEF = () => ({ draws: [], rounds: [], score: {}, bt: null, prevs: [], cfg: { jogos: 2, preco: 3.5, p11: 7, p12: 14, p13: 35, p14: 1500, p15: 1500000, janela: 20, prevFix: 13, limite: 0, fecha: 20, fechaVesp: 22 } });
 const okData = v => typeof v === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(v) ? v : null;
 const esc = v => String(v ?? '').replace(/[&<>"'`]/g, ch => '&#' + ch.charCodeAt(0) + ';');
@@ -163,27 +182,30 @@ function limpa(o) {
   const N = (v, d = 0) => (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '')) && Number.isFinite(+v) ? +v : d;
   const I = (v, d = 0) => Math.trunc(N(v, d)), out = DEF(), obj = x => x && typeof x === 'object' && !Array.isArray(x), arr = x => Array.isArray(x) ? x : [];
   if (!obj(o)) return out;
-  const IDS = ['aleat', 'padrao', 'quentes', 'recentes', 'atrasados', 'previsao'], sid = v => IDS.includes(v) ? v : 'padrao';
+  const IDS = ['aleat', 'padrao', 'quentes', 'frios', 'recentes', 'atrasados', 'ordem', 'parceiras', 'sequencia', 'previsao'], sid = v => IDS.includes(v) ? v : 'padrao';
   const mask = v => { const m = I(v, -1); return m > 0 && m < (1 << 25) && pop(m) === 15 ? m : null; };
-  const sc = x => obj(x) ? { j: Math.max(0, I(x.j)), h: [0, 1, 2, 3, 4].map(i => Math.max(0, I(arr(x.h)[i]))), s: Math.max(0, I(x.s)), js: Math.max(0, I(x.js)) } : null;
+  const sc = x => obj(x) ? { j: Math.max(0, I(x.j)), h: [0, 1, 2, 3, 4].map(i => Math.max(0, I(arr(x.h)[i]))), s: Math.max(0, I(x.s)), js: Math.max(0, I(x.js)), c: Math.max(0, I(x.c)) } : null;
   const scs = x => { const r = {}; if (obj(x)) for (const k of IDS) { const v = sc(x[k]); if (v) r[k] = v; } return r; };
   if (obj(o.cfg)) for (const k in out.cfg) if (k in o.cfg) out.cfg[k] = Math.max(0, N(o.cfg[k], out.cfg[k]));
   out.cfg.jogos = Math.min(200, Math.max(1, Math.trunc(out.cfg.jogos))); out.cfg.janela = Math.min(500, Math.max(5, Math.trunc(out.cfg.janela))); out.cfg.prevFix = Math.min(14, Math.max(10, Math.trunc(out.cfg.prevFix))); out.cfg.fecha = Math.min(23, Math.max(0, Math.trunc(out.cfg.fecha))); out.cfg.fechaVesp = Math.min(23, Math.max(0, Math.trunc(out.cfg.fechaVesp)));
   const limpaP = x => { if (!obj(x)) return undefined; const r = {}; for (let k = 11; k <= 15; k++) if (x[k] != null) { const v = N(x[k], -1); if (v >= 0 && v < 1e10) r[k] = Math.round(v * 100) / 100; } return Object.keys(r).length ? r : undefined; };
-  out.draws = arr(o.draws).filter(obj).map(d => ({ c: I(d.c), n: arr(d.n).map(x => I(x)).filter(x => x >= 1 && x <= 25), d: okData(d.d), p: limpaP(d.p), o: d.o ? true : undefined, corr: d.corr ? true : undefined }))
+  const limpaOrd = (x, n) => { const v = arr(x).map(q => I(q)).filter(q => q >= 1 && q <= 25); return v.length === 15 && new Set(v).size === 15 && v.every(q => n.includes(q)) ? v : undefined; };
+  out.draws = arr(o.draws).filter(obj).map(d => { const n = arr(d.n).map(x => I(x)).filter(x => x >= 1 && x <= 25); return { c: I(d.c), n, d: okData(d.d), p: limpaP(d.p), o: d.o ? true : undefined, corr: d.corr ? true : undefined, ord: limpaOrd(d.ord, n) }; })
     .filter(d => d.c > 0 && d.n.length === 15 && new Set(d.n).size === 15).map(d => (d.n.sort((a, b) => a - b), d));
   out.rounds = arr(o.rounds).filter(obj).map(r => {
     const st = sid(r.strat), shadow = {}; if (obj(r.shadow)) for (const k of IDS) if (Array.isArray(r.shadow[k])) shadow[k] = r.shadow[k].map(mask).filter(Boolean);
     const x = { id: I(r.id), c: I(r.c), ts: N(r.ts, Date.now()), strat: st, shadow, mine: arr(r.mine).map(mask).filter(Boolean), preco: Math.max(0, N(r.preco, out.cfg.preco)), res: r.res == null ? null : mask(r.res) };
-    if (Array.isArray(r.lotes)) x.lotes = r.lotes.filter(obj).map(l => ({ id: I(l.id), ts: N(l.ts, Date.now()), strat: sid(l.strat), prev: !!l.prev, fora: !!l.fora, teim: obj(l.teim) && I(l.teim.n) > 1 ? { g: I(l.teim.g), i: Math.min(24, Math.max(1, I(l.teim.i, 1))), n: Math.min(24, Math.max(2, I(l.teim.n))) } : undefined, jogos: arr(l.jogos).filter(obj).map(j => ({ m: mask(j.m), st: ['novo', 'salvo', 'rasc'].includes(j.st) ? j.st : 'rasc', sel: !!j.sel })).filter(j => j.m) })).filter(l => l.id > 0);
+    if (Array.isArray(r.lotes)) x.lotes = r.lotes.filter(obj).map(l => ({ id: I(l.id), ts: N(l.ts, Date.now()), strat: sid(l.strat), prev: !!l.prev, fora: !!l.fora, mix: !!l.mix, teim: obj(l.teim) && I(l.teim.n) > 1 ? { g: I(l.teim.g), i: Math.min(24, Math.max(1, I(l.teim.i, 1))), n: Math.min(24, Math.max(2, I(l.teim.n))) } : undefined, jogos: arr(l.jogos).filter(obj).map(j => ({ m: mask(j.m), st: ['novo', 'salvo', 'rasc'].includes(j.st) ? j.st : 'rasc', sel: !!j.sel, e: IDS.includes(j.e) ? j.e : undefined })).filter(j => j.m) })).filter(l => l.id > 0);
     else { x.cands = arr(r.cands).filter(obj).map(c => ({ m: mask(c.m), s: st, sv: !!c.sv })).filter(c => c.m); x.apostou = r.apostou !== false; if (!x.cands.length) delete x.cands; }
     return x;
   }).filter(r => r.id > 0 && r.c > 0);
   out.score = scs(o.score);
-  out.prevs = arr(o.prevs).filter(obj).map(p => ({ c: I(p.c), ts: N(p.ts), m: mask(p.m), b: arr(p.b).map(x => I(x)).filter(x => x >= 1 && x <= 25).slice(0, 3), pesos: obj(p.pesos) ? Object.fromEntries(['quentes', 'recentes', 'atrasados'].map(k => [k, Math.min(3, Math.max(1, I(p.pesos[k], 2)))])) : {}, hits: p.hits == null ? null : Math.min(15, Math.max(0, I(p.hits))) })).filter(p => p.c > 0 && p.m);
+  out.prevs = arr(o.prevs).filter(obj).map(p => ({ c: I(p.c), ts: N(p.ts), m: mask(p.m), b: arr(p.b).map(x => I(x)).filter(x => x >= 1 && x <= 25).slice(0, 3), pesos: obj(p.pesos) ? Object.fromEntries(['quentes', 'recentes', 'atrasados', 'sequencia'].filter(k => p.pesos[k] != null).map(k => [k, Math.min(10, Math.max(0, N(p.pesos[k], 1)))])) : {}, hits: p.hits == null ? null : Math.min(15, Math.max(0, I(p.hits))) })).filter(p => p.c > 0 && p.m);
   if (obj(o.bt) && obj(o.bt.sc)) { out.bt = { K: I(o.bt.K), k: I(o.bt.k), ts: N(o.bt.ts), de: I(o.bt.de), ate: I(o.bt.ate), sc: scs(o.bt.sc) }; const bp = o.bt.prev; if (obj(bp) && I(bp.n) > 0) out.bt.prev = { n: I(bp.n), soma: I(bp.soma), h11: I(bp.h11), max: I(bp.max), min: I(bp.min) }; }
   if (obj(o.prox)) out.prox = { c: I(o.prox.c), d: okData(o.prox.d) };
   if (obj(o.calib)) out.calib = { n: Math.max(0, I(o.calib.n)), ts: N(o.calib.ts) };
+  out.calibNovas = arr(o.calibNovas).filter(x => IDS.includes(x));
+  if (obj(o.ult) && Array.isArray(o.ult.rows)) out.ult = { c: Math.max(0, I(o.ult.c)), ts: N(o.ult.ts), rows: o.ult.rows.filter(obj).filter(x => IDS.includes(x.id)).map(x => ({ id: x.id, pos: Math.max(1, I(x.pos, 1)), posA: Math.max(1, I(x.posA, 1)), med: N(x.med), medA: N(x.medA), neste: x.neste == null ? null : N(x.neste) })) };
   if (obj(o.diag)) { out.diag = {}; for (const f of ['Caixa', 'Comunidade']) { const x = o.diag[f]; if (obj(x)) out.diag[f] = { ok: !!x.ok, ms: Math.max(0, I(x.ms)), c: Math.max(0, I(x.c)), erro: String(x.erro ?? '').slice(0, 160), ts: N(x.ts) }; } }
   if (obj(o.sync)) out.sync = { ts: N(o.sync.ts), ok: !!o.sync.ok, src: ['Caixa', 'Comunidade'].includes(o.sync.src) ? o.sync.src : '?', c: I(o.sync.c) };
   return out;
@@ -215,9 +237,14 @@ migra();
 /* ================= estatística ================= */
 function feat(m) { let p = 0, s = 0, mo = 0, q = 0; for (let i = 1; i <= 25; i++) if (m & (1 << (i - 1))) { if (i % 2 === 0) p++; s += i; if (MOLD.has(i)) mo++; if (PRIMOS.has(i)) q++; } return { p, s, mo, q }; }
 class Hist {
-  constructor() { this.n = 0; this.cnt = Array(26).fill(0); this.last = Array(26).fill(-1); this.recent = []; this.hp = Array(16).fill(0); this.hs = Array(400).fill(0); this.hm = Array(17).fill(0); this.hq = Array(10).fill(0); this.hr = Array(16).fill(0); this.lastMask = 0; }
-  add(nums) {
+  constructor() { this.n = 0; this.cnt = Array(26).fill(0); this.last = Array(26).fill(-1); this.recent = []; this.hp = Array(16).fill(0); this.hs = Array(400).fill(0); this.hm = Array(17).fill(0); this.hq = Array(10).fill(0); this.hr = Array(16).fill(0); this.lastMask = 0;
+    // laboratório: co = quantas vezes a e b saíram juntas; tr = quantas vezes b saiu no sorteio seguinte a um com a; o5/cO = ordem de saída
+    this.co = new Float64Array(676); this.tr = new Float64Array(676); this.trN = Array(26).fill(0); this.o5 = Array(26).fill(0); this.cO = Array(26).fill(0); this.nO = 0; }
+  add(nums, ord) {
     const m = toMask(nums), f = feat(m);
+    if (this.n > 0) { for (let a = 1; a <= 25; a++) if (this.lastMask & (1 << (a - 1))) { this.trN[a]++; for (const b of nums) this.tr[a * 26 + b]++; } }
+    for (const a of nums) for (const b of nums) if (a !== b) this.co[a * 26 + b]++;
+    if (Array.isArray(ord) && ord.length === 15) { this.nO++; ord.forEach((x, i) => { this.cO[x]++; if (i < 5) this.o5[x]++; }); }
     this.hp[f.p]++; this.hs[f.s]++; this.hm[f.mo]++; this.hq[f.q]++;
     if (this.n > 0) this.hr[pop(m & this.lastMask)]++;
     for (const x of nums) { this.cnt[x]++; this.last[x] = this.n; }
@@ -233,7 +260,7 @@ class Hist {
   atraso(x) { return this.last[x] < 0 ? this.n : this.n - 1 - this.last[x]; }
 }
 let _H = null, _Hn = -1;
-function hist() { if (_Hn !== S.draws.length) { _H = new Hist(); for (const d of S.draws) _H.add(d.n); _Hn = S.draws.length; } return _H; }
+function hist() { if (_Hn !== S.draws.length) { _H = new Hist(); for (const d of S.draws) _H.add(d.n, d.ord); _Hn = S.draws.length; } return _H; }
 const zw = (arr, k) => { const v = arr.slice(1), mu = v.reduce((a, b) => a + b, 0) / 25, sd = Math.sqrt(v.reduce((a, b) => a + (b - mu) ** 2, 0) / 25) || 1; return [0, ...v.map(x => Math.exp(k * (x - mu) / sd))]; };
 
 /* ================= estratégias ================= */
@@ -242,10 +269,29 @@ const STRATS = [
   { id: 'padrao', nome: 'Padrões típicos', desc: 'Aleatório, mas só aceita jogos com pares/ímpares, soma, moldura, primos e repetidos dentro do que mais acontece.', filtro: true, w: null },
   { id: 'quentes', nome: 'Mais sorteados', desc: 'Favorece os números que mais saíram na história toda + filtros de padrão.', filtro: true, w: h => zw(h.cnt, .8) },
   { id: 'recentes', nome: 'Quentes recentes', desc: 'Favorece os números que mais saíram nos últimos concursos + filtros.', filtro: true, w: h => zw(h.recentCount(S.cfg.janela), .8) },
+  { id: 'frios', nome: 'Menos sorteados', desc: 'Favorece as dezenas que menos saíram na história toda (as "frias") + filtros.', filtro: true, w: h => zw(h.cnt, -.8) },
   { id: 'atrasados', nome: 'Atrasados', desc: 'Favorece os números que estão há mais concursos sem sair + filtros.', filtro: true, w: h => [0, ...Array.from({ length: 25 }, (_, i) => 1 + .7 * h.atraso(i + 1))] },
+  { id: 'ordem', nome: 'Ordem de saída', lab: true, desc: 'Laboratório: favorece as dezenas que mais costumam sair entre as 5 primeiras bolas do sorteio. Precisa da ordem de saída (vem da API e, às vezes, da planilha); sem ela, joga como Padrões típicos.', filtro: true, w: h => h.nO >= 30 ? zw([0, ...Array.from({ length: 25 }, (_, i) => h.cO[i + 1] ? h.o5[i + 1] / h.cO[i + 1] : 1 / 3)], .8) : null },
+  { id: 'parceiras', nome: 'Dezenas parceiras', lab: true, desc: 'Laboratório: monta cada jogo com dezenas que mais saem juntas no mesmo sorteio (se escolheu o 07, puxa as parceiras do 07).', filtro: true, w: null, par: true },
+  { id: 'sequencia', nome: 'Sequência', lab: true, desc: 'Laboratório: olha o último resultado e favorece as dezenas que, na história, mais apareceram no sorteio seguinte ao das dezenas que acabaram de sair.', filtro: true, w: h => { if (h.n < 30) return null; const v = Array(26).fill(0); for (let a = 1; a <= 25; a++) if ((h.lastMask & (1 << (a - 1))) && h.trN[a]) for (let b = 1; b <= 25; b++) v[b] += h.tr[a * 26 + b] / h.trN[a]; return zw(v, .8); } },
   { id: 'previsao', nome: 'Em volta da previsão', desc: 'Cada jogo usa várias dezenas da previsão 🔮 (13 por padrão, ajustável em Ajustes) e completa com a beirada e outras. Fica em observação: só pode escolher seus jogos depois que a previsão provar, ao vivo, que acerta acima da sorte (100+ previsões conferidas e média acima da margem).', trava: true, filtro: true, w: null, prev: true }
 ];
 const SN = id => (STRATS.find(s => s.id === id) || {}).nome || esc(id);
+// dezenas parceiras: "afinidade" entre a e b = quantas vezes saíram juntas, comparado com o esperado pela frequência de cada uma
+function parMat(h) {
+  const L = new Float64Array(676), v = [];
+  for (let a = 1; a <= 25; a++) for (let b = 1; b <= 25; b++) if (a !== b && h.cnt[a] && h.cnt[b]) { const x = h.co[a * 26 + b] * h.n / (h.cnt[a] * h.cnt[b]); L[a * 26 + b] = x; v.push(x); }
+  const mu = v.reduce((x, y) => x + y, 0) / (v.length || 1), sd = Math.sqrt(v.reduce((x, y) => x + (y - mu) ** 2, 0) / (v.length || 1)) || 1;
+  for (let i = 0; i < 676; i++) L[i] = (L[i] - mu) / sd;
+  return L;
+}
+function amostraPar(h, L) {
+  const esc = [], livre = new Set(Array.from({ length: 25 }, (_, i) => i + 1)), wf = zw(h.cnt, .4);
+  const pick = ws => { const t = ws.reduce((a, x) => a + x[1], 0); let r = Math.random() * t; for (const [n, w] of ws) { r -= w; if (r <= 0) return n; } return ws.at(-1)[0]; };
+  let n = pick([...livre].map(x => [x, wf[x]])); esc.push(n); livre.delete(n);
+  while (esc.length < 15) { n = pick([...livre].map(x => [x, Math.exp(1.2 * esc.reduce((a, c) => a + L[c * 26 + x], 0) / esc.length)])); esc.push(n); livre.delete(n); }
+  return toMask(esc);
+}
 function amostra(w) {
   const k = []; for (let i = 1; i <= 25; i++) k.push([w ? Math.pow(Math.random(), 1 / w[i]) : Math.random(), i]);
   k.sort((a, b) => b[0] - a[0]); return toMask(k.slice(0, 15).map(x => x[1]));
@@ -256,17 +302,18 @@ function passa(m, R, h) {
   if (h.n > 0 && !ok(pop(m & h.lastMask), R.r)) return false;
   return true;
 }
-function gerar(h, sid, k, excl = [], sc = S.score) {
-  const st = STRATS.find(s => s.id === sid), w = st.w ? st.w(h) : null, R = st.filtro ? h.ranges() : null, P = st.prev ? consenso(h, sc) : null;
+function gerar(h, sid, k, excl = [], sc = S.score, viz = []) {
+  const st = STRATS.find(s => s.id === sid), w = st.w ? st.w(h) : null, R = st.filtro ? h.ranges() : null, P = st.prev ? consenso(h, sc) : null, L = st.par ? parMat(h) : null;
   // jogos parecidos demais entre si são evitados: no máximo 12 dezenas iguais. Na "Em volta da previsão" todos usam
   // várias dezenas da previsão, então o limite acompanha (13 ou 14). Ordem de prioridade se não der para cumprir tudo:
   // 1º sem repetir jogo, 2º dentro dos filtros, 3º pouca sobreposição. Se não der, gera menos jogos (e avisa) em vez de sair dos filtros
   const lim = P ? Math.max(12, Math.min(14, Math.trunc(S.cfg.prevFix || 13))) : 12, ex = new Set(excl), out = [], tem = new Set(); let g = 0;
   while (out.length < k && g < 30000) {
-    g++; const m = P ? amostraPrev(P) : amostra(w);
+    g++; const m = P ? amostraPrev(P) : L ? amostraPar(h, L) : amostra(w);
     if (tem.has(m) || ex.has(m)) continue;
     if (R && !passa(m, R, h)) continue;
-    if (g < 15000 && out.some(o => pop(o & m) > lim)) continue;
+    // viz = jogos de outras estratégias no mesmo grupo (mistura): também não podem ficar parecidos demais
+    if (g < 15000 && (out.some(o => pop(o & m) > lim) || viz.some(o => pop(o & m) > 12))) continue;
     out.push(m); tem.add(m);
   }
   return out;
@@ -274,7 +321,9 @@ function gerar(h, sid, k, excl = [], sc = S.score) {
 
 /* ================= placar das estratégias ================= */
 // j = jogos; h = quantos fizeram 11..15; s = soma de todos os acertos; js = jogos com soma registrada
-const emptySc = () => ({ j: 0, h: [0, 0, 0, 0, 0], s: 0, js: 0 });
+// c = concursos (para o veredito: jogos do mesmo concurso não são independentes)
+const emptySc = () => ({ j: 0, h: [0, 0, 0, 0, 0], s: 0, js: 0, c: 0 });
+const concOf = sc => sc.c || Math.max(1, Math.round((sc.js || 0) / 10));
 function des(sc, hits) { sc.j = Math.max(0, sc.j - 1); sc.s = Math.max(0, (sc.s || 0) - hits); sc.js = Math.max(0, (sc.js || 0) - 1); if (hits >= 11) sc.h[hits - 11] = Math.max(0, sc.h[hits - 11] - 1); }
 function acc(sc, hits) { sc.j++; sc.s = (sc.s || 0) + hits; sc.js = (sc.js || 0) + 1; if (hits >= 11) sc.h[hits - 11]++; }
 const media = sc => sc.js ? sc.s / sc.js : 0;
@@ -353,7 +402,9 @@ function rowsToDraws(rows) {
       if (!sl.every(s => isInt(s) && +s >= 1 && +s <= 25)) continue;
       const ns = sl.map(Number); if (new Set(ns).size !== 15) continue;
       let c = null; for (let j = 0; j < i; j++) if (isInt(v[j]) && +v[j] > 0) { c = +v[j]; break; }
-      out.push({ c, n: ns.sort((a, b) => a - b) }); break;
+      // se as bolas não vierem em ordem crescente, a planilha trouxe a ordem de saída: guarda
+      const ord = ns.some((x, q) => q && x < ns[q - 1]) ? ns.slice() : undefined;
+      out.push({ c, n: ns.slice().sort((a, b) => a - b), ord }); break;
     }
   }
   return out;
@@ -370,6 +421,7 @@ function mergeDraws(list, oficial) {
     const x = have.get(d.c);
     if (oficial && toMask(d.n) !== toMask(x.n)) { corrigidos.push({ c: d.c, antes: toMask(x.n), m: toMask(d.n) }); x.n = d.n.slice(); x.corr = true; comP.add(d.c); }
     if (oficial) { x.o = true; if (d.d && !x.d) x.d = d.d; }
+    if (d.ord && !x.ord && toMask(d.ord) === toMask(x.n)) { x.ord = d.ord.slice(); _Hn = -1; }
     if (d.p && (!x.p || (oficial && corrigidos.some(k => k.c === d.c)))) { x.p = d.p; comP.add(d.c); }
   }
   S.draws = [...have.values()].sort((a, b) => a.c - b.c); _DMv++; if (corrigidos.length) _Hn = -1;
@@ -377,7 +429,7 @@ function mergeDraws(list, oficial) {
   for (const r of S.rounds) if (r.res && comP.has(r.c)) recalc(r);
   // confere rodadas pendentes que agora têm resultado
   let conf = 0; for (const r of S.rounds) if (!r.res) { const d = have.get(r.c); if (d) { aplicaResultado(r, toMask(d.n)); conf++; } }
-  save(); setTimeout(calibrar, 300);
+  save(); setTimeout(() => calibrar().then(calibrarNovas), 300);
   if (corrigidos.length) toast(corrigidos.map(k => `⚠️ O resultado do concurso ${k.c} estava diferente do oficial e foi corrigido`).join(' · '), 7000);
   return { add, conf, corrigidos: corrigidos.length };
 }
@@ -420,10 +472,11 @@ function normaliza(j) {
   if (!(c > 0) || !Array.isArray(dz) || dz.length !== 15) return null;
   const n = dz.map(Number).filter(x => x >= 1 && x <= 25).sort((a, b) => a - b);
   if (new Set(n).size !== 15) return null;
+  const oz = j.dezenasSorteadasOrdemSorteio ?? j.dezenasOrdemSorteio, ord0 = Array.isArray(oz) ? oz.map(Number) : null, ord = ord0 && ord0.length === 15 && toMask(ord0) === toMask(n) ? ord0 : undefined;
   const proxC = +(j.numeroConcursoProximo ?? j.proximoConcurso ?? (c + 1)), proxD = j.dataProximoConcurso ?? j.dataProxConcurso ?? null;
   const rt = j.listaRateioPremio ?? j.premiacoes; let p = null;
   if (Array.isArray(rt)) { p = {}; for (const f of rt) { if (!f || typeof f !== 'object') continue; const mm = String(f.descricaoFaixa ?? f.descricao ?? '').match(/(\d{2})\s*acertos/i), k = mm ? +mm[1] : (Number.isFinite(+f.faixa) ? 16 - +f.faixa : 0), v = +f.valorPremio; if (k >= 11 && k <= 15 && Number.isFinite(v) && v >= 0 && v < 1e10) p[k] = Math.round(v * 100) / 100; } if (!Object.keys(p).length) p = null; }
-  return { c, d: okData(j.dataApuracao ?? j.data), n, p, prox: { c: Number.isFinite(proxC) ? proxC : c + 1, d: okData(proxD) } };
+  return { c, d: okData(j.dataApuracao ?? j.data), n, p, ord, prox: { c: Number.isFinite(proxC) ? proxC : c + 1, d: okData(proxD) } };
 }
 const errTxt = e => e && e.name === 'AbortError' ? 'tempo esgotado (12 s)' : /Failed to fetch|NetworkError|Load failed|fetch/i.test(String(e && e.message)) ? 'bloqueado pelo navegador (CORS) ou sem internet' : String((e && e.message) || e || 'erro');
 async function tentaFonte(f, c) {
@@ -465,7 +518,7 @@ async function sincronizar(manual) {
     // rateio do concurso anterior: se ele entrou sem rateio (digitado ou pela planilha), busca de novo para completar
     const ant = dmap().get(ult.c - 1); if (ant && !ant.p) { try { const x = await buscaConcurso(ult.c - 1); if (x.p) novos.push(x); } catch (e) {} }
     const antes = S.rounds.filter(r => !r.res).map(r => r.id);
-    const r = mergeDraws(novos.map(x => ({ c: x.c, n: x.n, d: x.d, p: x.p || undefined })), true);
+    const r = mergeDraws(novos.map(x => ({ c: x.c, n: x.n, d: x.d, p: x.p || undefined, ord: x.ord })), true);
     S.sync = { ts: Date.now(), ok: true, src: ult.src, c: ult.c }; save();
     const conf = S.rounds.filter(x => antes.includes(x.id) && x.res), ganho = conf.reduce((a, x) => a + (x.premio || 0), 0);
     if (r.corrigidos) {} else if (r.add) toast(`Concurso ${ult.c} chegou` + (conf.length ? (ganho ? ` · 🏆 você ganhou ${brl(ganho)}!` : ' · suas pastas foram conferidas') : ''));
@@ -479,7 +532,7 @@ async function baixarHistorico() {
   toast('Baixando histórico completo…');
   try {
     const arr = await getJSON('https://loteriascaixa-api.herokuapp.com/api/lotofacil');
-    const list = (Array.isArray(arr) ? arr : []).map(normaliza).filter(Boolean).map(x => ({ c: x.c, n: x.n, d: x.d, p: x.p || undefined }));
+    const list = (Array.isArray(arr) ? arr : []).map(normaliza).filter(Boolean).map(x => ({ c: x.c, n: x.n, d: x.d, p: x.p || undefined, ord: x.ord }));
     if (list.length < 100) throw new Error('poucos dados');
     const r = mergeDraws(list, true); abreRodada(); if (!r.corrigidos) toast(`${r.add} concursos adicionados`); render();
   } catch (e) { toast('Não deu para baixar. Use a planilha da Caixa.'); }
@@ -487,15 +540,17 @@ async function baixarHistorico() {
 const syncTxt = () => !S.sync ? 'Ainda não buscou.' : S.sync.ok ? `Última busca: ${new Date(S.sync.ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · fonte: ${esc(S.sync.src)}` : `Última tentativa falhou (${new Date(S.sync.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}). Sem internet ou a fonte está fora do ar.`;
 
 /* ================= previsão por consenso (NÃO é o resultado real) ================= */
-const VOTANTES = ['quentes', 'recentes', 'atrasados'];
-// cada estratégia ordena as 25 dezenas (1ª = 25 pts … 25ª = 1 pt); o voto vale 3, 2 ou 1 conforme a posição dela no ranking
+const VOTANTES = ['quentes', 'recentes', 'atrasados', 'sequencia'];
+// "olhar o momento": o que aconteceu agora pesa mais que a história toda
+const MOMENTO = { quentes: .5, recentes: 1.5, atrasados: 1.5, sequencia: 1.5 };
+// cada estratégia ordena as 25 dezenas (1ª = 25 pts … 25ª = 1 pt); o voto vale mais para quem está melhor no ranking (4, 3, 2, 1) × o peso do momento
 function consenso(h, sc = S.score) {
   const temDados = VOTANTES.some(id => sc[id] && sc[id].js);
   const ord = temDados ? ranking(sc).map(r => r.s.id).filter(id => VOTANTES.includes(id)) : VOTANTES;
-  const pesos = {}; ord.forEach((id, i) => pesos[id] = temDados ? 3 - i : 2);
+  const pesos = {}; ord.forEach((id, i) => pesos[id] = Math.round((temDados ? VOTANTES.length - i : 2.5) * MOMENTO[id] * 10) / 10);
   const pts = Array(26).fill(0), detalhe = {};
   for (const id of VOTANTES) {
-    const w = STRATS.find(s => s.id === id).w(h), rk = Array.from({ length: 25 }, (_, i) => i + 1).sort((a, b) => w[b] - w[a] || a - b);
+    const w = STRATS.find(s => s.id === id).w(h) || Array(26).fill(1), rk = Array.from({ length: 25 }, (_, i) => i + 1).sort((a, b) => w[b] - w[a] || a - b);
     detalhe[id] = Array(26).fill(0); rk.forEach((n, i) => { detalhe[id][n] = i + 1; pts[n] += (25 - i) * pesos[id]; });
   }
   const ordem = Array.from({ length: 25 }, (_, i) => i + 1).sort((a, b) => pts[b] - pts[a] || a - b);
@@ -556,7 +611,7 @@ function prevCard() {
     <p class="mu" style="margin:10px 0 0">🔒 Travada em ${new Date(p.ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}. Não muda mais até o resultado sair.</p>
     ${fechado ? `<div class="note" style="color:var(--warn)">⛔ Apostas encerradas: o concurso ${c} já foi sorteado e o resultado ainda não saiu. A previsão continua valendo no placar.</div>` : `<div class="grid2" style="margin-top:12px"><button class="btn sm" onclick="apostarPrev('salvo')">Apostar a previsão</button><button class="btn sec sm" onclick="apostarPrev('rasc')">Guardar como rascunho</button></div>`}
     <details style="margin-top:12px"><summary class="mu">▸ Mapa de força das 25 dezenas</summary><p class="mu">Quanto mais forte a cor, mais pontos a dezena fez na votação. % = pontos comparados com a 1ª colocada. As com contorno estão na previsão.</p><div class="heat">${Array.from({ length: 25 }, (_, i) => cell(i + 1)).join('')}</div></details>
-    <details style="margin-top:8px"><summary class="mu">▸ Quem votou e com que peso</summary>${VOTANTES.map(id => `<div class="row sp" style="padding:5px 0;border-top:1px solid var(--line)"><span>${nomeV(id)}</span><b>peso ${p.pesos[id] || 2}</b></div>`).join('')}<p class="mu">Peso 3 = a melhor das três no ranking, 2 = a do meio, 1 = a pior. Sem ranking ainda, todas valem 2.</p></details></div>
+    <details style="margin-top:8px"><summary class="mu">▸ Quem votou e com que peso</summary>${VOTANTES.map(id => `<div class="row sp" style="padding:5px 0;border-top:1px solid var(--line)"><span>${nomeV(id)}</span><b>peso ${(p.pesos[id] ?? '–').toLocaleString('pt-BR')}</b></div>`).join('')}<p class="mu">Peso = posição no ranking (a melhor das quatro vale 4, a pior vale 1) × o peso do momento: Quentes recentes, Atrasados e Sequência valem 1,5×; Mais sorteados, que olha a história toda, vale 0,5×. Previsões antigas mostram os pesos da época.</p></details></div>
   <div class="card"><h2>📈 Placar da previsão</h2>
     <div class="stats"><div class="stat"><b>${nv}</b><span>conferidas</span></div><div class="stat"><b>${nv ? f2(mv) : '–'}</b><span>média de acertos</span></div><div class="stat"><b>9,00</b><span>média da sorte</span></div></div>
     <p class="${V.cls}" style="font-size:14px;margin:12px 0 0">${V.txt}</p>
@@ -620,15 +675,28 @@ function checaLimite(custo, chave) {
 }
 // quantidade pedida na tela: de 1 a 200 (vazio = a quantidade padrão de Ajustes)
 const qtdJogos = () => Math.min(200, Math.max(1, Math.trunc(+UI.qtd) || S.cfg.jogos || 2));
-function qtdLabel(el) { UI.qtd = +el.value; const k = qtdJogos(), b = document.getElementById('gbtn'); if (b) b.textContent = `Gerar ${k} jogo(s) · ${brl(k * S.cfg.preco)}` + (+el.value > 200 ? ' (máx. 200)' : ''); }
+function qtdLabel(el) { UI.qtd = +el.value; const k = qtdJogos(), b = document.getElementById('gbtn'), mx = document.getElementById('mixprev'); if (b) b.textContent = `Gerar ${k} jogo(s) · ${brl(k * S.cfg.preco)}` + (+el.value > 200 ? ' (máx. 200)' : ''); if (mx) mx.textContent = '🧩 ' + misturaTxt(k); }
+// mistura: os jogos são divididos entre as estratégias; quem está melhor no ranking faz mais jogos.
+// O Aleatório puro entra com 1 jogo a partir de 5 jogos (comparação dentro da própria pasta). Controles e estratégias travadas não entram.
+function mistura(k, sc = S.score) {
+  const r = ranking(sc).filter(x => !x.s.ctl && !travada(x.s)), dados = r.some(x => x.sc.js), M = r.length;
+  const cand = r.map((x, i) => ({ id: x.s.id, w: dados ? Math.pow(M - i, 1.5) : 1 }));
+  let resto = k; const out = [];
+  if (k >= 5) { out.push({ id: 'aleat', n: 1 }); resto--; }
+  const tot = cand.reduce((a, c) => a + c.w, 0), al = cand.map((c, i) => ({ id: c.id, i, n: Math.floor(resto * c.w / tot), f: resto * c.w / tot % 1 }));
+  let falta = resto - al.reduce((a, c) => a + c.n, 0);
+  [...al].sort((a, b) => b.f - a.f || a.i - b.i).slice(0, falta).forEach(c => c.n++);
+  return al.filter(c => c.n > 0).map(({ id, n }) => ({ id, n })).concat(out);
+}
+const misturaTxt = k => mistura(k).map(p => `${p.n} ${SN(p.id)}`).join(' · ');
 function gerarMais() {
-  const h = hist(), k = qtdJogos(), sid = lider(), r = garanteRodada();
-  const usados = r.lotes.flatMap(l => l.jogos.map(j => j.m));
-  const g = gerar(h, sid, k, usados);
-  if (!g.length) return toast('Não há mais jogos diferentes para gerar neste concurso com essa estratégia');
-  r.lotes.push({ id: uid(), ts: Date.now(), strat: sid, jogos: g.map(m => ({ m, st: 'novo', sel: true })) });
+  const h = hist(), k = qtdJogos(), r = garanteRodada(), plano = mistura(k);
+  const usados = r.lotes.flatMap(l => l.jogos.map(j => j.m)), jogos = [], viz = [];
+  for (const p of plano) { const g = gerar(h, p.id, p.n, usados.concat(viz), S.score, viz); g.forEach(m => { jogos.push({ m, st: 'novo', sel: true, e: p.id }); viz.push(m); }); }
+  if (!jogos.length) return toast('Não há mais jogos diferentes para gerar neste concurso');
+  r.lotes.push({ id: uid(), ts: Date.now(), strat: plano[0].id, mix: true, jogos });
   save(); render();
-  if (g.length < k) toast(`Só deu para gerar ${g.length} de ${k} jogos diferentes com essa estratégia`, 4000);
+  if (jogos.length < k) toast(`Só deu para gerar ${jogos.length} de ${k} jogos diferentes`, 4000);
 }
 function selJ(rid, lid, i) { const [, l] = findL(rid, lid); l.jogos[i].sel = !l.jogos[i].sel; save(); render(); }
 function selTodos(rid, lid, v) { const [, l] = findL(rid, lid); l.jogos.forEach(j => { if (j.st === 'novo') j.sel = v; }); save(); render(); }
@@ -641,11 +709,14 @@ function guardar(rid, lid, st) {
   if (st === 'salvo' && !checaLimite(n * S.cfg.preco * t, `l${lid}:${n}:${t}`)) return;
   // os não marcados continuam no grupo para você decidir depois (no fechamento viram rascunho)
   marc.forEach(j => j.st = st);
-  r.preco = S.cfg.preco;
+  r.preco = S.cfg.preco; UI.teim[lid] = 1; // a teimosinha vale só para este salvamento
   if (t > 1) {
-    // teimosinha: a mesma aposta nos próximos concursos, uma pasta para cada
-    l.teim = { g: l.id, i: 1, n: t };
-    for (let i = 2; i <= t; i++) { const r2 = rodadaPara(r.c + i - 1); r2.preco = S.cfg.preco; r2.lotes.push({ id: uid(), ts: l.ts, strat: l.strat, prev: !!l.prev, teim: { g: l.id, i, n: t }, jogos: marc.map(j => ({ m: j.m, st: 'salvo', sel: true })) }); recalc(r2); }
+    // teimosinha: os jogos salvos saem do grupo e formam pastas próprias, uma por concurso (1/n, 2/n…)
+    const g0 = uid();
+    l.jogos = l.jogos.filter(j => !marc.includes(j));
+    r.lotes.push({ id: g0, ts: l.ts, strat: l.strat, prev: !!l.prev, mix: !!l.mix, teim: { g: g0, i: 1, n: t }, jogos: marc.map(j => ({ m: j.m, st: 'salvo', sel: true, e: j.e })) });
+    if (!l.jogos.length) r.lotes = r.lotes.filter(x => x !== l);
+    for (let i = 2; i <= t; i++) { const r2 = rodadaPara(r.c + i - 1); r2.preco = S.cfg.preco; r2.lotes.push({ id: uid(), ts: l.ts, strat: l.strat, prev: !!l.prev, mix: !!l.mix, teim: { g: g0, i, n: t }, jogos: marc.map(j => ({ m: j.m, st: 'salvo', sel: true, e: j.e })) }); recalc(r2); }
   }
   recalc(r); save(); render();
   toast(st === 'salvo' ? (t > 1 ? `🔁 Teimosinha: ${n} jogo(s) × ${t} concursos (${r.c} a ${r.c + t - 1}) · ${brl(n * S.cfg.preco * t)}` : `${n} jogo(s) salvo(s) na pasta`) : `${n} rascunho(s) guardado(s) na pasta`, t > 1 ? 4000 : 2200);
@@ -684,7 +755,17 @@ function apagarPasta(rid, lid) {
 function aplicaResultado(r, m) {
   if (r.lotes) r.lotes.forEach(l => l.jogos.forEach(j => { if (j.st === 'novo') j.st = 'rasc'; }));
   r.res = m; recalc(r);
-  for (const sid in r.shadow) { S.score[sid] = S.score[sid] || emptySc(); for (const g of r.shadow[sid]) acc(S.score[sid], pop(g & m)); }
+  const temSombra = Object.values(r.shadow || {}).some(a => a.length), antes = temSombra ? ranking().map((x, i) => ({ id: x.s.id, pos: i + 1, med: x.med })) : null, neste = {};
+  for (const sid in r.shadow) {
+    S.score[sid] = S.score[sid] || emptySc(); const gs = r.shadow[sid]; if (!gs.length) continue;
+    let soma = 0; for (const g of gs) { const x = pop(g & m); acc(S.score[sid], x); soma += x; }
+    S.score[sid].c = concOf(S.score[sid]) + 1; neste[sid] = soma / gs.length;
+  }
+  // foto do ranking antes e depois deste resultado (para o cartão "O que mudou")
+  if (temSombra && r.c >= ((S.ult && S.ult.c) || 0)) {
+    const depois = ranking().map((x, i) => ({ id: x.s.id, pos: i + 1, med: x.med }));
+    S.ult = { c: r.c, ts: Date.now(), rows: depois.map(d => { const a = antes.find(x => x.id === d.id) || d; return { id: d.id, pos: d.pos, posA: a.pos, med: d.med, medA: a.med, neste: neste[d.id] ?? null }; }) };
+  }
 }
 function conferir(c, nums) {
   const m = toMask(nums);
@@ -705,16 +786,28 @@ async function backtest(K, k, auto) {
   if (UI.bt) return false;
   const D = S.draws, N = D.length; K = Math.min(K, N - 50); if (K < 10) { if (!auto) toast('Preciso de pelo menos 60 concursos'); return false; }
   UI.bt = { run: true, p: 0 }; render();
-  const h = new Hist(); for (let i = 0; i < N - K; i++) h.add(D[i].n);
+  const h = new Hist(); for (let i = 0; i < N - K; i++) h.add(D[i].n, D[i].ord);
   const sc = {}, pv = { n: 0, soma: 0, h11: 0, max: 0, min: 15 }; STRATS.forEach(s => sc[s.id] = emptySc());
   for (let i = N - K; i < N; i++) {
     const dm = toMask(D[i].n);
     const P = consenso(h, sc), hp = pop(P.m & dm); pv.n++; pv.soma += hp; if (hp >= 11) pv.h11++; pv.max = Math.max(pv.max, hp); pv.min = Math.min(pv.min, hp);
-    for (const s of STRATS) for (const g of gerar(h, s.id, k, [], sc)) acc(sc[s.id], pop(g & dm));
-    h.add(D[i].n);
+    for (const s of STRATS) { const gs = gerar(h, s.id, k, [], sc); if (gs.length) sc[s.id].c++; for (const g of gs) acc(sc[s.id], pop(g & dm)); }
+    h.add(D[i].n, D[i].ord);
     if (i % 10 === 0) { UI.bt.p = (i - (N - K)) / K; const b = $('#btp'); if (b) b.style.width = pct(UI.bt.p); await sleep(); }
   }
   S.bt = { K, k, ts: Date.now(), sc, prev: pv, de: D[N - K].c, ate: D[N - 1].c }; save(); UI.bt = null; render(); if (!auto) toast('Teste concluído'); return true;
+}
+// estratégias que chegaram numa atualização: calibra só elas com o passado (uma vez), sem mexer nas outras
+async function calibrarNovas() {
+  if (UI.bt || S.draws.length < 300 || !S.calib) return;
+  const novas = STRATS.filter(s => !(S.score[s.id] && S.score[s.id].js) && !(S.calibNovas || []).includes(s.id)).map(s => s.id);
+  if (!novas.length) return;
+  const K = Math.min(1000, S.draws.length - 50);
+  toast(`⏳ Calibrando as estratégias novas: ${novas.map(SN).join(', ')}…`, 5000);
+  if (!(await backtest(K, 10, true))) return;
+  novas.forEach(id => { S.score[id] = JSON.parse(JSON.stringify(S.bt.sc[id])); });
+  S.calibNovas = (S.calibNovas || []).concat(novas); save(); render();
+  toast(`✅ Estratégias novas calibradas com ${S.bt.K} concursos`, 4000);
 }
 // calibração automática: uma única vez, quando há 300+ concursos e o ranking está vazio
 async function calibrar() {
@@ -775,17 +868,18 @@ function vJogar() {
   } else {
   const fch = concursoAberto().fechado;
   if (fch) h += `<div class="note" style="margin:0 0 12px;color:var(--warn)">⏰ O concurso ${fch} já foi sorteado e o resultado ainda não saiu. Os jogos gerados agora vão para o ${c}.</div>`;
-  h += `<div class="row sp"><h2 style="margin:0">Concurso ${c}</h2><span class="pill ac">${SN(sid)}</span></div>
+  h += `<div class="row sp"><h2 style="margin:0">Concurso ${c}</h2><span class="pill ac">🧩 Mistura</span></div>
     ${S.prox && S.prox.c === c && S.prox.d ? `<p style="margin:6px 0 0">📅 Sorteio em <b>${esc(S.prox.d)}</b></p>` : ''}
-    <p class="mu" style="margin:6px 0 12px">Estratégia escolhida automaticamente: a que lidera o ranking.</p>
+    <p class="mu" style="margin:6px 0 12px">Os jogos são divididos entre as estratégias: quem está melhor no ranking (hoje, <b>${SN(sid)}</b>) faz mais jogos.</p>
     ${UI.bt ? `<div class="note" style="margin:0 0 10px">⏳ Calibrando o ranking com o passado… aguarde um pouco.</div>` : ''}
     <label class="f">Quantos jogos gerar</label><div class="row" style="flex-wrap:nowrap"><input type="number" inputmode="numeric" min="1" max="200" value="${qtd}" style="width:90px" oninput="qtdLabel(this)">
-    <button class="btn" id="gbtn" onclick="gerarMais()">Gerar ${qtd} jogo(s) · ${brl(qtd * S.cfg.preco)}</button></div>`;
+    <button class="btn" id="gbtn" onclick="gerarMais()">Gerar ${qtd} jogo(s) · ${brl(qtd * S.cfg.preco)}</button></div>
+    <p class="mu mixprev" id="mixprev">🧩 ${misturaTxt(qtd)}</p>`;
   const novos = r ? r.lotes.filter(l => l.jogos.some(j => j.st === 'novo')) : [];
   for (const l of novos) {
     const js = l.jogos.map((j, i) => [j, i]).filter(([j]) => j.st === 'novo'), nSel = js.filter(([j]) => j.sel).length, t = UI.teim[l.id] || 1;
     h += `<div class="lote"><div class="row sp"><b>Gerados às ${new Date(l.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</b><span><button class="lnk" onclick="selTodos(${r.id},${l.id},true)">marcar todos</button> · <button class="lnk" onclick="selTodos(${r.id},${l.id},false)">nenhum</button></span></div>
-      ${js.map(([j, i], n) => `<div class="game cand ${j.sel ? 'sel' : ''}" onclick="selJ(${r.id},${l.id},${i})"><div class="lbl"><span>${j.sel ? '☑' : '☐'} Jogo ${n + 1}</span></div>${balls(j.m)}</div>`).join('')}
+      ${js.map(([j, i], n) => `<div class="game cand ${j.sel ? 'sel' : ''}" onclick="selJ(${r.id},${l.id},${i})"><div class="lbl"><span>${j.sel ? '☑' : '☐'} Jogo ${n + 1}</span>${j.e ? `<span class="estr">${SN(j.e)}</span>` : ''}</div>${balls(j.m)}</div>`).join('')}
       ${contaHonesta(nSel, t)}
       <label class="f">🔁 Teimosinha (repetir a aposta)</label><select onchange="UI.teim[${l.id}]=+this.value;render()">${TEIM.map(v => `<option value="${v}" ${v === t ? 'selected' : ''}>${v === 1 ? 'Só este concurso' : `${v} concursos (${c} a ${c + v - 1})`}</option>`).join('')}</select>
       <button class="btn" style="margin-top:10px" ${nSel ? '' : 'disabled'} onclick="guardar(${r.id},${l.id},'salvo')">Salvar ${nSel} para apostar · ${brl(nSel * S.cfg.preco * t)}${t > 1 ? ` (🔁 ${t}×)` : ''}</button>
@@ -838,13 +932,24 @@ function vAjuda() {
     <p>As bolinhas <b>não têm memória</b>. Elas não sabem o que saiu ontem. É como jogar uma moeda: se deu cara 5 vezes seguidas, a próxima continua sendo 50% cara e 50% coroa.</p>`, true) +
   sec('🔁 O dia a dia no app', `<ol class="steps"><li>Na aba <b>Jogar</b>, escolha quantos jogos quer e toque em <b>Gerar</b>.</li><li>Toque nos jogos para marcar e escolha: <b>Salvar para apostar</b> (conta no seu gasto) ou <b>Guardar como rascunho</b> (só para ver depois como teria ido).</li><li>Copie ou compartilhe a imagem e faça a aposta na lotérica ou no app da Caixa.</li><li>Depois do sorteio, o app busca o resultado sozinho e confere tudo. Se não conseguir, digite na aba <b>Resultado</b>.</li></ol>
     ${ex('você gera 5 jogos, salva 2 para apostar e guarda 3 como rascunho. Se um rascunho fizer 11 pontos, a pasta mostra "💡 você poderia ter ganho R$ 7,00".')}`) +
-  sec('🧠 As 6 estratégias (os "jogadores")', `<p>Pense em 6 amigos que escolhem números cada um do seu jeito:</p>
+  sec('🧠 As estratégias (os "jogadores")', `<p>Pense em amigos que escolhem números cada um do seu jeito:</p>
     <p>🎲 <b>Aleatório puro:</b> escolhe de olhos fechados. Serve de comparação: se alguém não ganhar dele, não está ajudando.</p>
     <p>📐 <b>Padrões típicos:</b> também escolhe ao acaso, mas joga fora jogos "esquisitos".</p>
     <p>🔥 <b>Mais sorteados:</b> prefere os números que mais saíram desde o primeiro sorteio.</p>
+    <p>❄️ <b>Menos sorteados:</b> o contrário do anterior: prefere as dezenas "frias", que menos saíram na história.</p>
     <p>⚡ <b>Quentes recentes:</b> prefere os que mais saíram nos últimos ${S.cfg.janela} concursos.</p>
     <p>⏳ <b>Atrasados:</b> prefere os que estão há mais tempo sem sair. ${ex('se o 07 não sai há 6 concursos, o Atrasados gosta muito dele.')}</p>
-    <p>🔮 <b>Em volta da previsão:</b> usa ${S.cfg.prevFix || 13} dos 15 números da previsão em cada jogo e completa com os da "beirada" e outros. Fica <b>em observação</b>: só pode escolher seus jogos depois que a previsão provar, ao vivo, que acerta acima da sorte.</p>`) +
+    <p>🔮 <b>Em volta da previsão:</b> usa ${S.cfg.prevFix || 13} dos 15 números da previsão em cada jogo e completa com os da "beirada" e outros. Fica <b>em observação</b>: só pode escolher seus jogos depois que a previsão provar, ao vivo, que acerta acima da sorte.</p>
+    <p>🧪 E mais três do <b>laboratório de padrões</b> (veja o tópico 🧪): Ordem de saída, Dezenas parceiras e Sequência.</p>`) +
+  sec('🧩 Mistura: como seus jogos são montados', `<p>Seus jogos não saem de uma estratégia só. O app <b>divide</b> os jogos entre elas: quem está melhor no ranking faz mais jogos, e quem está pior faz menos. A partir de 5 jogos, 1 sai do Aleatório puro, para comparação dentro da própria pasta.</p>
+    ${ex('você pede 10 jogos. A tela mostra antes: "🧩 3 Mais sorteados · 2 Quentes recentes · 1 Atrasados · 1 Menos sorteados · 1 Padrões típicos · 1 Sequência · 1 Aleatório puro". Na pasta, cada jogo mostra de qual estratégia veio, e assim você vê qual acertou.')}
+    <p>O app também cuida para os jogos <b>não ficarem parecidos</b> entre si: dois jogos nunca têm mais de 12 dezenas iguais. Por quê? Se todos os jogos gostam das mesmas dezenas, eles acertam juntos ou erram juntos. Com 200 jogos parecidos, você pode ter 10 premiados num concurso e 35 no outro. Espalhados, o normal é ficar perto de 21 em todo concurso.</p>
+    <p>⚠️ A mistura não aumenta o total de prêmios no longo prazo. Ela deixa o resultado mais estável.</p>`) +
+  sec('🧪 Laboratório de padrões', `<p>Três ideias que usam o histórico inteiro para tentar adivinhar o próximo sorteio. Elas entram no ranking como qualquer estratégia, com o selo <b>🧪 lab</b>, passam pela máquina do tempo e ganham o veredito: <b>dentro da sorte</b> ou <b>acima da sorte</b>.</p>
+    <p>🥇 <b>Ordem de saída:</b> dezenas que costumam sair entre as 5 primeiras bolas. Precisa da ordem do sorteio, que vem da API (e às vezes da planilha). Sem ela, joga como Padrões típicos.</p>
+    <p>🤝 <b>Dezenas parceiras:</b> dezenas que mais saem juntas. ${ex('se o 07 e o 18 saíram juntos mais vezes do que o esperado, quando o jogo pega o 07 ele tende a puxar o 18.')}</p>
+    <p>➡️ <b>Sequência:</b> olha o último resultado e favorece as dezenas que, na história, mais apareceram no sorteio <b>seguinte</b>. ${ex('se depois de sair o 03, na história, o 21 apareceu no sorteio seguinte mais vezes que as outras, e o 03 acabou de sair, o 21 ganha força.')}</p>
+    <p>Se alguma delas ficar acima da sorte por muito tempo, inclusive no ao vivo, ela vira líder sozinha e faz mais jogos na mistura. O esperado, sendo honesto, é que fiquem perto de 9,0, como as outras.</p>`) +
   sec('📐 O que são os filtros de padrão', `<p>O app olhou todos os sorteios e viu como eles costumam ser. Jogos muito diferentes disso são descartados.</p>
     ${ex('em 8 de cada 10 sorteios saem entre 6 e 9 números pares. Um jogo com só 2 pares é "esquisito", então o filtro joga fora.')}
     <p>Ele olha 5 coisas: quantos pares, a soma das dezenas, quantos números da moldura (a borda do volante), quantos primos e quantos repetem do sorteio anterior.</p>
@@ -853,18 +958,22 @@ function vAjuda() {
     ${ex('a estratégia fez 3 jogos: um acertou 8, outro 9 e outro 10. A média é (8 + 9 + 10) ÷ 3 = <b>9 acertos por jogo</b>.')}
     <p>Por que média de acertos e não dinheiro? Porque um único jogo de 15 pontos vale uns R$ 1,5 milhão. Se contasse dinheiro, um golpe de sorte deixaria uma estratégia em 1º para sempre. A média conta <b>todos</b> os jogos, inclusive os de 14 e 15, sem exagero. E o dinheiro vem como consequência: quem acerta mais em média, ganha prêmio mais vezes.</p>
     <p><b>O número mágico é 9,0.</b> É a média de qualquer jogo, até de olhos fechados. Só é interessante quem fica acima disso por muito tempo.</p>`) +
-  sec('🚦 Como o ranking escolhe seus jogos', `<p>Quando você toca em <b>Gerar</b>, a estratégia mais bem colocada no ranking (o líder) é quem escolhe seus jogos. O Aleatório puro (controle) nunca pode ser líder, e a Em volta da previsão só pode depois de liberada (veja "🔒 A trava da previsão").</p>
+  sec('📊 Como ler o ranking', `<p>Cada estratégia tem:</p><ul><li>a <b>média grande</b> à direita (ex.: 9,058 acertos por jogo);</li><li>a <b>tabelinha</b> de quantas vezes fez 11, 12, 13, 14 e 15 pontos, com uma linha <b>geral</b> e uma <b>📡 ao vivo</b>;</li><li>a <b>régua</b>: a risca no meio é o 9,00, a faixa cinza é o que a sorte explica, o ponto roxo é a média geral e o azul a do ao vivo;</li><li>o <b>veredito</b>: ● dentro da sorte, ▲ acima ou ▼ abaixo.</li></ul>
+    ${ex('a régua da Mais sorteados mostra o ponto roxo um pouco à direita da faixa cinza: "▲ acima da sorte · +0,058". Com várias estratégias disputando, uma na beirada é normal. Só vale atenção se continuar acima por muito tempo, inclusive no ponto azul do ao vivo.')}`) +
+  sec('🔄 O antes e depois do ranking', `<p>A cada resultado, o app tira uma foto do ranking <b>antes</b> e <b>depois</b>. O cartão "🔄 O que mudou no último resultado" mostra, para cada estratégia: quanto os jogos sombra dela acertaram <b>naquele concurso</b>, a posição antes e agora (▲ subiu, ▼ caiu, = ficou) e quanto a média geral mudou. No ranking, a setinha ao lado do nome mostra o mesmo.</p>
+    ${ex('a Mais sorteados tinha 20.010 jogos com média 9,058. No concurso 3837, os 10 jogos sombra dela fizeram 96 acertos (média 9,6). A nova média fica (9,058 × 20.010 + 96) ÷ 20.020 = <b>9,0583</b>. Por isso a média geral quase não se mexe: 10 jogos novos contra 20 mil antigos. O ao vivo e o antes e depois mostram o movimento de verdade.')}`) +
+  sec('🚦 Como o ranking escolhe seus jogos', `<p>Quando você toca em <b>Gerar</b>, a estratégia mais bem colocada no ranking (o líder) faz mais jogos na mistura. O Aleatório puro (controle) nunca pode ser líder, e a Em volta da previsão só pode depois de liberada (veja "🔒 A trava da previsão").</p>
     <p><b>O "freio":</b> para não trocar de líder por sorte, o app finge que cada estratégia já fez 300 jogos com a média de todas. Assim, quem acabou de começar fica no meio do pelotão.</p>
     ${ex('uma estratégia fez 2 jogos com 13 acertos. Sem o freio, ela viraria líder na hora, por pura sorte. Com o freio, ela sobe só um pouquinho e precisa continuar indo bem.')}
     <p><b>Os jogos "sombra":</b> toda vez que você gera jogos para um concurso, cada estratégia também faz os dela escondido. Quando sai o resultado, o app confere todos. Por isso o ranking anda mesmo com as estratégias que você não usou.</p>`) +
   sec('⏪ O teste com o passado (máquina do tempo)', `<p>O app volta no tempo e finge que está jogando, concurso por concurso, <b>sem saber o futuro</b>.</p>
     ${ex('para testar o concurso 3000, o app só olha os sorteios até o 2999. Cada estratégia faz seus jogos, o app confere com o resultado real do 3000, e só então o 3000 entra no histórico. Aí ele vai para o 3001, e assim por diante.')}
     <p>É como fazer uma prova sem poder ver as respostas. Depois, <b>Usar como ponto de partida</b> transforma esse resultado no ranking.</p>`) +
-  sec('🔮 A previsão: como é feita', `<p>É uma <b>votação</b> entre 3 estratégias: Mais sorteados, Quentes recentes e Atrasados.</p>
+  sec('🔮 A previsão: como é feita', `<p>É uma <b>votação</b> entre 4 estratégias: Mais sorteados, Quentes recentes, Atrasados e Sequência. Ela <b>olha o momento</b>: quem acompanha o que está acontecendo agora (Quentes recentes, Atrasados e Sequência) vale 1,5×, e quem olha a história inteira (Mais sorteados) vale 0,5×. Por isso ela muda mais de um concurso para o outro.</p>
     <p><b>1. Cada uma faz seu "top 25":</b> a dezena preferida ganha 25 pontos, a 2ª ganha 24… e a última ganha 1. Igual a pontos de campeonato.</p>
-    <p><b>2. Quem está melhor no ranking vota mais forte:</b> a melhor das três tem peso 3, a do meio tem peso 2, a pior tem peso 1.</p>
+    <p><b>2. Quem está melhor no ranking vota mais forte:</b> a melhor das quatro vale 4, a seguinte 3, depois 2 e 1. Esse número é multiplicado pelo peso do momento.</p>
     <p><b>3. Soma tudo:</b> as 15 dezenas com mais pontos formam a previsão. A 16ª, a 17ª e a 18ª ficam na "beirada".</p>
-    ${ex(`imagine a dezena 13. O Mais sorteados (peso 3) colocou ela em 2º lugar: 24 pontos × 3 = 72. O Atrasados (peso 2) colocou em 10º: 16 × 2 = 32. O Quentes recentes (peso 1) colocou em 1º: 25 × 1 = 25. Total da 13: 72 + 32 + 25 = <b>129 pontos</b>. O app faz isso com as 25 dezenas.`)}
+    ${ex(`imagine a dezena 13. O Mais sorteados está em 1º entre as quatro (4 × 0,5 = peso 2) e colocou ela em 2º lugar: 24 pontos × 2 = 48. O Atrasados (3 × 1,5 = peso 4,5) colocou em 10º: 16 × 4,5 = 72. O Quentes recentes (2 × 1,5 = peso 3) colocou em 1º: 25 × 3 = 75. A Sequência (1 × 1,5 = peso 1,5) colocou em 5º: 21 × 1,5 = 31,5. Total da 13: 48 + 72 + 75 + 31,5 = <b>226,5 pontos</b>. O app faz isso com as 25 dezenas.`)}
     <p>🔒 <b>Trava:</b> quando sai um resultado, a previsão do próximo concurso é calculada e <b>trancada</b> com data e hora. Ninguém pode mudar depois, nem o app. Assim o placar é honesto.</p>
     <p>⚠️ A previsão <b>não é o resultado real</b>. O sorteio não sabe que ela existe. A chance dela acertar é igual à de qualquer jogo.</p>`) +
   sec('📈 O placar e o veredito da previsão', `<p>A cada resultado, o app confere quantos números a previsão acertou e faz a média.</p>
@@ -879,7 +988,8 @@ function vAjuda() {
     <ol class="steps"><li>Pelo menos <b>100 previsões conferidas ao vivo</b>. O teste com o passado não conta: tem que ser com previsões trancadas antes do sorteio de verdade.</li><li>A média de acertos delas passar do <b>limite de cima da margem da sorte</b>: 9 + 2 × 1,2247 ÷ √(número de previsões).</li></ol>
     ${ex('com 100 previsões, o limite é 9 + 2 × 1,2247 ÷ 10 = <b>9,245</b>. Se a média for 9,30, a previsão é liberada 🔓. Se for 9,10, continua em observação 🔒. Com 400 previsões o limite cai para 9 + 2 × 1,2247 ÷ 20 = 9,122, porque com mais concursos a sorte balança menos.')}
     <p>Enquanto estiver travada, ela aparece no ranking com a etiqueta <b>em observação</b>, e o selo <b>líder</b> vai para quem realmente está escolhendo seus jogos. O placar da previsão (aba Resultado) mostra quanto falta.</p>`) +
-  sec('📁 Pastas, rascunhos e simulação', `<p>Cada vez que você gera e salva, nasce uma <b>pasta</b> com o concurso, a data e a hora.</p>
+  sec('📁 Pastas, rascunhos e simulação', `<p>Cada vez que você gera e salva, nasce uma <b>pasta</b> com o concurso, a data e a hora. Depois do resultado, a capa mostra <b>🏆 quantos jogos foram premiados</b>, e dentro da pasta aparece o normal esperado.</p>
+    ${ex('"🏆 10 de 200 premiados · o normal seria ≈ 21,2". Ficar bem abaixo do normal costuma ser sinal de jogos parecidos demais, que erraram juntos.')}
     <p><b>Jogos gerados e não salvos</b> viram rascunho sozinhos quando o resultado sai, para você ver como teriam ido. E enquanto o resultado não sai, dá para ir e voltar: abra a pasta e toque em <b>Apostar os rascunhos</b> ou em <b>Voltar apostas para rascunho</b>. Depois do sorteio, não muda mais.</p>
     ${ex('você guardou a previsão como rascunho e mudou de ideia. Toque em "Apostar a previsão" (aba Resultado) ou abra a pasta 🔮 e toque em "Apostar os rascunhos". Ela passa a contar no gasto e no placar. Mudou de ideia de novo? Toque em "Guardar como rascunho" ou em "Voltar apostas para rascunho" e ela sai do gasto.')}
     <ul><li>🏆 na capa: seus jogos salvos ganharam.</li><li>💡 na capa: os rascunhos teriam ganhado.</li></ul>
@@ -945,11 +1055,13 @@ function vSalvos() {
   return h + list.map(({ r, l, sv, rs, ganho, teria }) => {
     const d = new Date(l.ts), quando = d.toLocaleDateString('pt-BR') + ' às ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const st = !r.res ? (encerrado(r) ? `<span class="pill wn">⏳ sorteado, aguardando resultado</span>` : `<span class="pill">aguardando</span>`) : ganho ? `<span class="pill ok">🏆 ${brl(ganho)}</span>` : teria ? `<span class="pill wn">💡 ${brl(teria)}</span>` : `<span class="pill">sem prêmio</span>`;
-    const jogo = (g, lbl, rasc) => { const ht = r.res ? pop(g & r.res) : 0, p = prize(ht, r.c); return `<div class="game ${p ? (rasc ? 'win teria' : 'win') : ''}"><div class="lbl"><span>${lbl}</span>${p ? `<span class="winbadge">${rasc ? '💡 Teria' : '🏆'} ${ht} pontos · ${brl(p)}</span>` : r.res ? `<span><b>${ht}</b> acertos</span>` : ''}</div>${balls(g, r.res || 0)}</div>`; };
-    return `<details class="card folder ${ganho ? 'win' : teria ? 'maybe' : ''}" ${UI.op[l.id] ? 'open' : ''} ontoggle="UI.op[${l.id}]=this.open"><summary class="row sp"><span class="row" style="gap:12px;flex-wrap:nowrap"><span class="fic">${ganho ? '🏆' : teria ? '💡' : '📁'}</span><span><b>Concurso ${r.c}</b> <span class="mu">· ${sv.length + rs.length} jogos</span><br><span class="mu">${quando}</span>${l.prev || l.teim || l.fora ? `<br><span class="tags">${l.prev ? '<span>🔮 previsão</span>' : ''}${l.teim ? `<span>🔁 teimosinha ${l.teim.i}/${l.teim.n}</span>` : ''}${l.fora ? '<span>📥 de fora</span>' : ''}</span>` : ''}</span></span>${st}</summary>
+    const E = new Map(l.jogos.map(j => [j.m, j.e]));
+    const jogo = (g, lbl, rasc) => { const ht = r.res ? pop(g & r.res) : 0, p = prize(ht, r.c); return `<div class="game ${p ? (rasc ? 'win teria' : 'win') : ''}"><div class="lbl"><span>${lbl}${E.get(g) ? ` <span class="estr">${SN(E.get(g))}</span>` : ''}</span>${p ? `<span class="winbadge">${rasc ? '💡 Teria' : '🏆'} ${ht} pontos · ${brl(p)}</span>` : r.res ? `<span><b>${ht}</b> acertos</span>` : ''}</div>${balls(g, r.res || 0)}</div>`; };
+    return `<details class="card folder ${ganho ? 'win' : teria ? 'maybe' : ''}" ${UI.op[l.id] ? 'open' : ''} ontoggle="UI.op[${l.id}]=this.open"><summary class="row sp"><span class="row" style="gap:12px;flex-wrap:nowrap"><span class="fic">${ganho ? '🏆' : teria ? '💡' : '📁'}</span><span><b>Concurso ${r.c}</b> <span class="mu">· ${sv.length + rs.length} jogos</span><br><span class="mu">${quando}</span>${r.res && sv.length ? `<br><span class="mu" style="font-size:12.5px">🏆 ${sv.filter(g => prize(pop(g & r.res), r.c) > 0).length} de ${sv.length} premiados</span>` : ''}${l.prev || l.teim || l.fora || l.mix ? `<br><span class="tags">${l.mix ? '<span>🧩 mistura</span>' : ''}${l.prev ? '<span>🔮 previsão</span>' : ''}${l.teim ? `<span>🔁 teimosinha ${l.teim.i}/${l.teim.n}</span>` : ''}${l.fora ? '<span>📥 de fora</span>' : ''}</span>` : ''}</span></span>${st}</summary>
       <div style="margin-top:10px">${r.res ? `<h3 style="margin-top:0">Sorteadas</h3>${balls(r.res)}` : ''}
       ${l.teim ? `<div class="note" style="margin:0 0 6px">🔁 Teimosinha ${l.teim.i} de ${l.teim.n}: a mesma aposta vale para ${l.teim.n} concursos seguidos. Custo total da teimosinha: <b>${brl(sv.length * (r.preco || S.cfg.preco) * l.teim.n)}</b>.</div>` : ''}
       ${r.res && temRateio(r.c) ? `<p class="mu" style="margin:0 0 4px;font-size:12px">💰 Prêmios com o rateio real deste concurso.</p>` : ''}
+      ${r.res && (sv.length || rs.length) ? (() => { const np = gs => gs.filter(g => prize(pop(g & r.res), r.c) > 0).length, f1 = v => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }); return `<div class="contp">${sv.length ? `<div>🏆 <b>${np(sv)} de ${sv.length}</b> jogos premiados <span class="mu">· o normal seria ≈ ${f1(sv.length * P11)}</span></div>` : ''}${rs.length ? `<div>💡 <b>${np(rs)} de ${rs.length}</b> rascunhos teriam prêmio <span class="mu">· normal ≈ ${f1(rs.length * P11)}</span></div>` : ''}</div>`; })() : ''}
       ${sv.length ? `<h3>Para apostar (${sv.length} · ${brl(sv.length * (r.preco || S.cfg.preco))})</h3>${sv.map((g, i) => jogo(g, 'Jogo ' + (i + 1))).join('')}` : ''}
       ${rs.length ? `<h3>Rascunhos (${rs.length})</h3>${r.res && teria ? `<div class="note" style="margin:0 0 6px;color:var(--warn)">💡 Se tivesse apostado estes rascunhos, você poderia ter ganho <b>${brl(teria)}</b>.</div>` : r.res ? `<p class="mu" style="margin:0">Os rascunhos não teriam dado prêmio.</p>` : ''}${rs.map((g, i) => jogo(g, 'Rascunho ' + (i + 1), true)).join('')}` : ''}
       ${!encerrado(r) && (rs.length || sv.length) ? `<div class="grid2" style="margin-top:10px">${rs.length ? `<button class="btn sm" onclick="apostarRasc(${r.id},${l.id})">Apostar os rascunhos (${rs.length})</button>` : '<span></span>'}${sv.length ? `<button class="btn sec sm" onclick="voltarRasc(${r.id},${l.id})">Voltar apostas para rascunho (${sv.length})</button>` : ''}</div>` : ''}
@@ -1061,27 +1173,48 @@ function tog(n) { if (UI.sel.has(n)) UI.sel.delete(n); else if (UI.sel.size < 15
 function colar(t) { const ns = [...new Set((t.match(/\d+/g) || []).map(Number).filter(n => n >= 1 && n <= 25))]; if (ns.length !== 15) return toast(`Achei ${ns.length} dezenas, preciso de 15`); UI.sel = new Set(ns); render(); }
 
 function aoVivo() {
-  const o = {}; STRATS.forEach(s => o[s.id] = { j: 0, s: 0, c: 0 });
-  for (const r of S.rounds) if (r.res && r.shadow) { let tem = false; for (const sid in r.shadow) { const x = o[sid]; if (!x) continue; for (const g of r.shadow[sid]) { x.j++; x.s += pop(g & r.res); tem = true; } } }
-  for (const r of S.rounds) if (r.res && r.shadow && Object.keys(r.shadow).length) STRATS.forEach(s => { if (r.shadow[s.id] && r.shadow[s.id].length) o[s.id].c++; });
+  const o = {}; STRATS.forEach(s => o[s.id] = { j: 0, s: 0, c: 0, h: [0, 0, 0, 0, 0] });
+  for (const r of S.rounds) if (r.res && r.shadow) for (const sid in r.shadow) { const x = o[sid], gs = r.shadow[sid]; if (!x || !gs.length) continue; x.c++; for (const g of gs) { const t = pop(g & r.res); x.j++; x.s += t; if (t >= 11) x.h[t - 11]++; } }
   return o;
 }
+const f3 = v => v.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 }), f2n = v => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const nint = v => v ? v.toLocaleString('pt-BR') : '–';
 function rankList(sc, unit) {
-  const V = unit ? aoVivo() : null, f2 = v => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const r = ranking(sc), meds = r.filter(x => x.sc.js).map(x => x.med), lo = Math.min(8.9, ...meds), hi = Math.max(9.1, ...meds);
-  if (!meds.length && r.some(x => x.sc.j)) return '<p class="mu">Este ranking é da versão antiga (sem média de acertos). Rode o teste com sorteios passados e toque em "Usar como ponto de partida".</p>';
-  return r.map((x, i) => { const roi = x.sc.j ? x.ret / (x.sc.j * S.cfg.preco) : 0, d = x.med - 9; return `<div class="rk"><div><b>${i + 1}. ${x.s.nome}</b> ${unit && x.sc.j && x.s.id === lider(sc) ? '<span class="pill ac">líder</span>' : ''}${x.s.ctl ? ' <span class="pill">controle</span>' : ''}${travada(x.s) ? ' <span class="pill wn">em observação</span>' : ''}<div class="mu">${x.sc.j} jogos · 11+ em ${pct(x.hit)} · ${x.sc.h.map((c, k) => c ? `${11 + k}pts:${c}` : '').filter(Boolean).join(' ')}</div></div>
-    <div style="text-align:right"><b>${x.med.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b><div class="mu">acertos/jogo</div></div>
-    <div class="mu" style="grid-column:1/-1;font-size:12px">${x.sc.js ? `${d >= 0 ? '+' : ''}${d.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} vs. esperado (9,0)` : 'sem média'} · volta ${pct(roi)} por R$1</div>
-    ${V ? (v => `<div class="vivo">📡 Ao vivo: ${v.j ? `<b>${f2(v.s / v.j)}</b> acertos/jogo em ${v.j} jogos (${v.c} ${v.c === 1 ? 'concurso real' : 'concursos reais'})` : 'ainda sem concursos reais conferidos'}</div>`)(V[x.s.id]) : ''}
-    <div class="bar"><i class="${x.s.ctl ? 'ctl' : ''}" style="width:${x.sc.js ? Math.max(3, (x.med - lo) / (hi - lo) * 100) : 0}%"></i></div></div>`; }).join('');
+  const V = unit ? aoVivo() : null, L = unit ? lider(sc) : null, U = unit && S.ult ? new Map(S.ult.rows.map(x => [x.id, x])) : null;
+  const r = ranking(sc), lo = 8.6, hi = 9.4, X = v => Math.max(0, Math.min(100, (v - lo) / (hi - lo) * 100));
+  if (!r.some(x => x.sc.js) && r.some(x => x.sc.j)) return '<p class="mu">Este ranking é da versão antiga (sem média de acertos). Rode o teste com sorteios passados e toque em "Usar como ponto de partida".</p>';
+  return r.map((x, i) => {
+    const nc = concOf(x.sc), mg = 2 * 1.2247 / Math.sqrt(nc), d = x.med - 9, tem = !!x.sc.js, ac = tem && x.med > 9 + mg, ab = tem && x.med < 9 - mg;
+    const v = V && V[x.s.id], u = U && U.get(x.s.id), roi = x.sc.j ? x.ret / (x.sc.j * S.cfg.preco) : 0;
+    const mv = u ? (u.posA > u.pos ? `<span class="mv up">▲${u.posA - u.pos}</span>` : u.posA < u.pos ? `<span class="mv dn">▼${u.pos - u.posA}</span>` : `<span class="mv eq">=</span>`) : '';
+    const tags = (x.s.id === L && x.sc.j ? ' <span class="pill ac">líder</span>' : '') + (x.s.ctl ? ' <span class="pill">controle</span>' : '') + (travada(x.s) ? ' <span class="pill wn">em observação</span>' : '') + (x.s.lab ? ' <span class="pill lab">🧪 lab</span>' : '');
+    const linha = (nome, h, cls) => `<tr class="${cls}"><td>${nome}</td>${h.map((c, k) => `<td class="${c && k >= 3 ? 'big' : ''}">${nint(c)}</td>`).join('')}</tr>`;
+    return `<div class="rk">
+      <div><b>${i + 1}. ${x.s.nome}</b> ${mv}${tags}<div class="mu">${x.sc.j.toLocaleString('pt-BR')} jogos · prêmio em ${pct(x.hit)}</div></div>
+      <div style="text-align:right"><b style="font-size:17px">${tem ? f3(x.med) : '–'}</b><div class="mu">acertos/jogo</div></div>
+      <table class="pts"><tr><th>pontos</th><th>11</th><th>12</th><th>13</th><th>14</th><th>15</th></tr>${linha('geral', x.sc.h, '')}${v ? linha('📡 ao vivo', v.h, 'live') : ''}</table>
+      ${tem ? `<div class="ruler"><div class="axis"></div><div class="band" style="left:${X(9 - mg)}%;width:${X(9 + mg) - X(9 - mg)}%"></div><div class="zero" style="left:50%"></div>${v && v.j ? `<div class="pt" style="left:${X(v.s / v.j)}%;background:var(--blue)"></div>` : ''}<div class="pt" style="left:${X(x.med)}%;background:#c48bff"></div></div>` : ''}
+      <div class="vv"><span class="${ac ? 'pos' : ab ? 'neg' : 'mu'}">${!tem ? 'sem dados' : ac ? '▲ acima da sorte' : ab ? '▼ abaixo da sorte' : '● dentro da sorte'}${tem ? ' · ' + (d >= 0 ? '+' : '') + f3(d) : ''}</span>${v ? `<span style="color:var(--blue)">📡 ao vivo ${v.j ? f2n(v.s / v.j) : '–'} <span class="mu">(${v.c})</span></span>` : ''}</div>
+      <details class="mais"><summary class="mu">▸ mais detalhes</summary><div class="mu" style="line-height:1.7;margin-top:4px">Geral: ${tem ? f3(x.med) : '–'} em ${x.sc.j.toLocaleString('pt-BR')} jogos (${nc.toLocaleString('pt-BR')} concursos)<br>Faixa da sorte com ${nc.toLocaleString('pt-BR')} concursos: ${f3(9 - mg)} a ${f3(9 + mg)}${v ? `<br>Ao vivo: ${v.j ? f2n(v.s / v.j) : '–'} em ${v.j} jogos (${v.c} concursos reais)` : ''}<br>Volta por R$ 1: ${pct(roi)}${x.s.lab ? '<br>🧪 Estratégia do laboratório: está aqui para ser testada.' : ''}</div></details>
+    </div>`;
+  }).join('');
+}
+// cartão "o que mudou no último resultado": foto do ranking antes e depois
+function mudouCard() {
+  const U = S.ult; if (!U || !U.rows.length) return `<div class="card mud"><h2>🔄 O que mudou no último resultado</h2><p class="mu" style="margin:0">Aparece depois do próximo resultado conferido: o app tira uma foto do ranking antes e depois.</p></div>`;
+  const rows = U.rows.slice().sort((a, b) => a.pos - b.pos), f4 = v => (v >= 0 ? '+' : '−') + Math.abs(v).toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+  return `<div class="card mud"><h2>🔄 O que mudou no último resultado</h2><p class="mu" style="margin:0 0 8px">Concurso ${U.c} · cada estratégia fez ${SOMBRAS} jogos sombra</p>
+    <table class="mt"><tr><th>Estratégia</th><th>Neste<br>concurso</th><th>Posição<br>antes → agora</th><th>Média<br>geral</th></tr>
+    ${rows.map(x => { const dm = x.med - x.medA, dp = x.posA - x.pos; return `<tr><td>${SN(x.id)}</td><td class="nc">${x.neste == null ? '–' : x.neste.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td><td>${x.posA}º → ${x.pos}º ${dp > 0 ? `<span class="up">▲${dp}</span>` : dp < 0 ? `<span class="dn">▼${-dp}</span>` : '<span class="eq">=</span>'}</td><td class="${Math.abs(dm) < 5e-5 ? 'eq' : dm > 0 ? 'up' : 'dn'}">${Math.abs(dm) < 5e-5 ? '0,0000' : f4(dm)}</td></tr>`; }).join('')}</table>
+    <p class="mu" style="margin:10px 0 0;font-size:12.5px">💡 A média geral muda pouco porque ${SOMBRAS} jogos novos entram numa conta de milhares. O 📡 ao vivo, que só tem sorteios reais, mexe bem mais.</p></div>`;
 }
 function vRanking() {
   const tot = STRATS.reduce((a, s) => a + (S.score[s.id]?.j || 0), 0);
-  let h = `<div class="card"><h2>Ranking ao vivo</h2>${S.calib ? `<p class="pos" style="margin:0 0 8px;font-size:14px">✅ Calibrado automaticamente com ${S.calib.n} concursos</p>` : ''}${UI.bt && !S.calib ? `<p class="mu" style="margin:0 0 8px">⏳ Calibrando automaticamente…</p>` : ''}<p class="mu" style="margin-top:0">A cada resultado, o app confere os jogos de <b>todas</b> as estratégias (mesmo as que você não apostou). Quem lidera gera seus próximos jogos.</p>
-    <p class="mu" style="margin-top:-4px;font-size:12.5px">📡 <b>Ao vivo</b> mostra só os concursos reais desde que você usa o app (${SOMBRAS} jogos sombra por estratégia em cada um). A média grande soma também o teste com o passado.</p>
+  let h = mudouCard() + `<div class="card"><h2>Ranking ao vivo</h2>${S.calib ? `<p class="pos" style="margin:0 0 8px;font-size:14px">✅ Calibrado automaticamente com ${S.calib.n} concursos</p>` : ''}${UI.bt && !S.calib ? `<p class="mu" style="margin:0 0 8px">⏳ Calibrando automaticamente…</p>` : ''}<p class="mu" style="margin-top:0">A cada resultado, o app confere os jogos de <b>todas</b> as estratégias (mesmo as que você não apostou). Quem lidera gera seus próximos jogos.</p>
+    <div class="leg"><span><i class="dot" style="background:#c48bff"></i>Geral</span><span><i class="dot" style="background:var(--blue)"></i>Ao vivo (concursos)</span><span><i class="dot" style="background:rgba(166,155,187,.4);border-radius:3px"></i>Faixa da sorte</span><span><i class="dot" style="background:#9a8fb3;width:2px;border-radius:0"></i>9,00</span></div>
+    <p class="mu" style="margin:6px 0 0;font-size:12.5px"><b>Geral</b> = teste com o passado + sorteios reais. <b>📡 Ao vivo</b> = só os sorteios reais (${SOMBRAS} jogos sombra por estratégia em cada um).</p>
     ${tot ? rankList(S.score, true) : '<p class="mu">Ainda sem dados. Confira um resultado ou rode o teste abaixo e use-o como ponto de partida.</p>'}
-    <div class="note">“Volta por R$1”: quanto voltou em prêmios para cada real apostado. 100% = empate. O líder é quem tem a maior <b>média de acertos por jogo</b>, sem contar o <b>Aleatório puro</b> (controle) e a <b>Em volta da previsão</b> enquanto estiver em observação. Todo jogo conta, de 0 a 15 pontos. A média esperada de qualquer jogo é 9,0.</div></div>`;
+    <div class="note">Com várias estratégias disputando, é normal alguma ficar na beirada da faixa da sorte por acaso. Só vale atenção se ficar <b>acima</b> por muito tempo, inclusive no ao vivo. O líder é quem tem a maior <b>média de acertos por jogo</b>, sem contar o <b>Aleatório puro</b> (controle) e a <b>Em volta da previsão</b> enquanto estiver em observação. Todo jogo conta, de 0 a 15 pontos. A média esperada de qualquer jogo é 9,0.</div></div>`;
   h += `<div class="card"><h2>Teste com sorteios passados</h2><p class="mu" style="margin-top:0">Simula cada estratégia nos últimos concursos usando só o que se sabia antes de cada sorteio.</p>
     <div class="grid2"><div><label class="f">Concursos</label><select id="btK">${[100, 300, 500, 1000, 2000].map(v => `<option ${v === 300 ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
     <div><label class="f">Jogos por concurso</label><select id="btk">${[1, 2, 3, 5, 10].map(v => `<option ${v === S.cfg.jogos ? 'selected' : ''}>${v}</option>`).join('')}</select></div></div>
@@ -1160,7 +1293,7 @@ function render() {
 try { history.replaceState({ n: 0 }, '', '#jogar'); } catch (e) {}
 render();
 sincronizar(false);
-setTimeout(calibrar, 800);
+setTimeout(() => calibrar().then(calibrarNovas), 800);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') sincronizar(false); });
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
