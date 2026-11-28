@@ -173,7 +173,7 @@ function toast(t, ms = 2200) { const e = $('#toast'); e.textContent = t; e.class
 
 /* ================= estado ================= */
 const KEY = 'lotolab-v1';
-const VERSAO = 28; // acompanha o cache do sw.js (lotolab-v19)
+const VERSAO = 29; // acompanha o cache do sw.js (lotolab-v29)
 const DEF = () => ({ draws: [], rounds: [], score: {}, bt: null, prevs: [], cfg: { jogos: 2, preco: 3.5, p11: 7, p12: 14, p13: 35, p14: 1500, p15: 1500000, janela: 20, prevFix: 13, limite: 0, fecha: 20, fechaVesp: 22 } });
 const okData = v => typeof v === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(v) ? v : null;
 const esc = v => String(v ?? '').replace(/[&<>"'`]/g, ch => '&#' + ch.charCodeAt(0) + ';');
@@ -800,12 +800,12 @@ async function backtest(K, k, auto) {
 // estratégias que chegaram numa atualização: calibra só elas com o passado (uma vez), sem mexer nas outras
 async function calibrarNovas() {
   if (UI.bt || S.draws.length < 300 || !S.calib) return;
-  const novas = STRATS.filter(s => !(S.score[s.id] && S.score[s.id].js) && !(S.calibNovas || []).includes(s.id)).map(s => s.id);
+  const novas = STRATS.filter(s => !(S.calibNovas || []).includes(s.id) && (S.score[s.id]?.js || 0) < 1000).map(s => s.id);
   if (!novas.length) return;
   const K = Math.min(1000, S.draws.length - 50);
   toast(`⏳ Calibrando as estratégias novas: ${novas.map(SN).join(', ')}…`, 5000);
   if (!(await backtest(K, 10, true))) return;
-  novas.forEach(id => { S.score[id] = JSON.parse(JSON.stringify(S.bt.sc[id])); });
+  novas.forEach(id => { const b = JSON.parse(JSON.stringify(S.bt.sc[id])), v = S.score[id]; if (v) { b.j += v.j; b.s += v.s; b.js += v.js; b.c += v.c || 0; v.h.forEach((x, i) => b.h[i] += x); } S.score[id] = b; });
   S.calibNovas = (S.calibNovas || []).concat(novas); save(); render();
   toast(`✅ Estratégias novas calibradas com ${S.bt.K} concursos`, 4000);
 }
@@ -943,7 +943,7 @@ function vAjuda() {
     <p>🧪 E mais três do <b>laboratório de padrões</b> (veja o tópico 🧪): Ordem de saída, Dezenas parceiras e Sequência.</p>`) +
   sec('🧩 Mistura: como seus jogos são montados', `<p>Seus jogos não saem de uma estratégia só. O app <b>divide</b> os jogos entre elas: quem está melhor no ranking faz mais jogos, e quem está pior faz menos. A partir de 5 jogos, 1 sai do Aleatório puro, para comparação dentro da própria pasta.</p>
     ${ex('você pede 10 jogos. A tela mostra antes: "🧩 3 Mais sorteados · 2 Quentes recentes · 1 Atrasados · 1 Menos sorteados · 1 Padrões típicos · 1 Sequência · 1 Aleatório puro". Na pasta, cada jogo mostra de qual estratégia veio, e assim você vê qual acertou.')}
-    <p>O app também cuida para os jogos <b>não ficarem parecidos</b> entre si: dois jogos nunca têm mais de 12 dezenas iguais. Por quê? Se todos os jogos gostam das mesmas dezenas, eles acertam juntos ou erram juntos. Com 200 jogos parecidos, você pode ter 10 premiados num concurso e 35 no outro. Espalhados, o normal é ficar perto de 21 em todo concurso.</p>
+    <p>O app também cuida para os jogos <b>não ficarem parecidos</b> entre si: dois jogos quase nunca têm mais de 12 dezenas iguais. Por quê? Se todos os jogos gostam das mesmas dezenas, eles acertam juntos ou erram juntos. Com 200 jogos parecidos, você pode ter 10 premiados num concurso e 35 no outro. Espalhados, o normal é ficar perto de 21 em todo concurso.</p>
     <p>⚠️ A mistura não aumenta o total de prêmios no longo prazo. Ela deixa o resultado mais estável.</p>`) +
   sec('🧪 Laboratório de padrões', `<p>Três ideias que usam o histórico inteiro para tentar adivinhar o próximo sorteio. Elas entram no ranking como qualquer estratégia, com o selo <b>🧪 lab</b>, passam pela máquina do tempo e ganham o veredito: <b>dentro da sorte</b> ou <b>acima da sorte</b>.</p>
     <p>🥇 <b>Ordem de saída:</b> dezenas que costumam sair entre as 5 primeiras bolas. Precisa da ordem do sorteio, que vem da API (e às vezes da planilha). Sem ela, joga como Padrões típicos.</p>
@@ -990,7 +990,7 @@ function vAjuda() {
     <p>Enquanto estiver travada, ela aparece no ranking com a etiqueta <b>em observação</b>, e o selo <b>líder</b> vai para quem realmente está escolhendo seus jogos. O placar da previsão (aba Resultado) mostra quanto falta.</p>`) +
   sec('📁 Pastas, rascunhos e simulação', `<p>Cada vez que você gera e salva, nasce uma <b>pasta</b> com o concurso, a data e a hora. Depois do resultado, a capa mostra <b>🏆 quantos jogos foram premiados</b>, e dentro da pasta aparece o normal esperado.</p>
     ${ex('"🏆 10 de 200 premiados · o normal seria ≈ 21,2". Ficar bem abaixo do normal costuma ser sinal de jogos parecidos demais, que erraram juntos.')}
-    <p><b>Jogos gerados e não salvos</b> viram rascunho sozinhos quando o resultado sai, para você ver como teriam ido. E enquanto o resultado não sai, dá para ir e voltar: abra a pasta e toque em <b>Apostar os rascunhos</b> ou em <b>Voltar apostas para rascunho</b>. Depois do sorteio, não muda mais.</p>
+    <p><b>Jogos gerados e não salvos</b> viram rascunho sozinhos quando as apostas fecham, para você ver como teriam ido. E enquanto as apostas não fecham, dá para ir e voltar: abra a pasta e toque em <b>Apostar os rascunhos</b> ou em <b>Voltar apostas para rascunho</b>. Depois do fechamento, não muda mais.</p>
     ${ex('você guardou a previsão como rascunho e mudou de ideia. Toque em "Apostar a previsão" (aba Resultado) ou abra a pasta 🔮 e toque em "Apostar os rascunhos". Ela passa a contar no gasto e no placar. Mudou de ideia de novo? Toque em "Guardar como rascunho" ou em "Voltar apostas para rascunho" e ela sai do gasto.')}
     <ul><li>🏆 na capa: seus jogos salvos ganharam.</li><li>💡 na capa: os rascunhos teriam ganhado.</li></ul>
     <p><b>Simular no passado:</b> dentro da pasta, o app pega aqueles jogos e confere com sorteios antigos.</p>
@@ -1279,7 +1279,8 @@ function restore(t) { try { if (String(t).length > 20e6) throw 0; const o = JSON
 let zConf = null;
 function zerar(o) {
   if (zConf !== o) { zConf = o; $('#zmsg').textContent = 'Toque de novo para confirmar.'; return; }
-  zConf = null; if (o === 'tudo') S = DEF(); else { S.score = {}; S.bt = null; } _Hn = -1; _DMv++; save(); toast('Feito'); render();
+  zConf = null; if (o === 'tudo') S = DEF(); else { S.score = {}; S.bt = null; S.ult = null; S.calib = null; S.calibNovas = []; } _Hn = -1; _DMv++; save(); toast('Feito'); render();
+  setTimeout(() => calibrar().then(calibrarNovas), 300);
 }
 
 function render() {
